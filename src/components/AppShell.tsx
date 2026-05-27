@@ -34,7 +34,8 @@ export default function AppShell({ user }: Props) {
   const [member,      setMember]      = useState<RestaurantMember | null>(null)
   const [loading,     setLoading]     = useState(true)
   const [module,      setModule]      = useState<AppModule>('home')
-  const [moduleTitle, setModuleTitle] = useState('')
+  const [moduleTitle,  setModuleTitle]  = useState('')
+  const [subPageTitle, setSubPageTitle] = useState('')
 
   // ── Load context ───────────────────────────────────────────
   const loadContext = useCallback(async () => {
@@ -104,6 +105,7 @@ export default function AppShell({ user }: Props) {
   function navigate(m: AppModule, title = '') {
     setModule(m)
     setModuleTitle(title)
+    setSubPageTitle('')
     window.scrollTo(0, 0)
   }
 
@@ -149,16 +151,8 @@ export default function AppShell({ user }: Props) {
 
   // ── Top bar ────────────────────────────────────────────────
   const TopBar = () => (
-    <header className="h-12 bg-white border-b border-[--border] flex items-center px-4 gap-3 flex-shrink-0 z-10">
-      {module !== 'home' ? (
-        <button
-          onClick={() => navigate('home')}
-          className="flex items-center gap-1.5 text-xs text-[--muted] hover:text-[--text] transition-colors"
-        >
-          <span className="text-base leading-none">⌂</span>
-          <span className="hidden sm:inline">Home</span>
-        </button>
-      ) : (
+    <header className="h-12 bg-white border-b border-[--border] flex items-center px-4 gap-2 flex-shrink-0 z-10">
+      {module === 'home' ? (
         <div className="flex items-center gap-2">
           {restaurant.branding?.logoUrl ? (
             <img src={restaurant.branding.logoUrl} alt="Logo" className="h-6 w-auto" />
@@ -171,10 +165,28 @@ export default function AppShell({ user }: Props) {
             {restaurant.branding?.displayName ?? restaurant.name}
           </span>
         </div>
-      )}
-
-      {module !== 'home' && moduleTitle && (
-        <span className="text-xs font-medium text-[--text] hidden sm:inline">{moduleTitle}</span>
+      ) : (
+        <nav className="flex items-center gap-1.5 text-xs min-w-0">
+          <button onClick={() => navigate('home')}
+            className="text-[--muted] hover:text-[--text] transition-colors flex-shrink-0 flex items-center gap-1">
+            <span>⌂</span><span className="hidden sm:inline">Home</span>
+          </button>
+          {moduleTitle && (<>
+            <span className="text-[--hint]">›</span>
+            {subPageTitle ? (
+              <button onClick={() => setSubPageTitle('')}
+                className="text-[--muted] hover:text-[--text] transition-colors truncate max-w-[120px]">
+                {moduleTitle}
+              </button>
+            ) : (
+              <span className="text-[--text] font-medium truncate max-w-[200px]">{moduleTitle}</span>
+            )}
+          </>)}
+          {subPageTitle && (<>
+            <span className="text-[--hint] flex-shrink-0">›</span>
+            <span className="text-[--text] font-medium truncate max-w-[200px]">{subPageTitle}</span>
+          </>)}
+        </nav>
       )}
 
       <div className="ml-auto flex items-center gap-3">

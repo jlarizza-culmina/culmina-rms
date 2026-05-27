@@ -1,6 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
-import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient } from '@/lib/types'
+import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient, ServiceWare, Garnish } from '@/lib/types'
 import CostingTab from './CostingTab'
 import { printRecipeCard, recipeToText } from '@/lib/recipeExport'
 
@@ -162,6 +162,26 @@ export default function RecipeView({
   async function saveServerNotes() {
     await onUpdateRecipe(recipe.id, { server_notes: serverNotesDraft })
   }
+
+  // ── Service ware helpers ─────────────────────────────────────
+  const sw = (recipe.service_ware ?? {}) as ServiceWare
+  async function updateSW(patch: Partial<ServiceWare>) {
+    await onUpdateRecipe(recipe.id, { service_ware: { ...sw, ...patch } })
+  }
+  async function toggleFlatware(item: string) {
+    const cur = sw.flatware ?? []
+    await updateSW({ flatware: cur.includes(item) ? cur.filter(x => x !== item) : [...cur, item] })
+  }
+  async function addGarnish() {
+    const g: Garnish = { id: crypto.randomUUID(), qty: 1, item: 'lemon twist', prep: 'fresh', presentation: 'on rim' }
+    await updateSW({ garnishes: [...(sw.garnishes ?? []), g] })
+  }
+  async function updateGarnish(id: string, patch: Partial<Garnish>) {
+    await updateSW({ garnishes: (sw.garnishes ?? []).map(g => g.id === id ? { ...g, ...patch } : g) })
+  }
+  async function removeGarnish(id: string) {
+    await updateSW({ garnishes: (sw.garnishes ?? []).filter(g => g.id !== id) })
+  }
   function doCreateVariation() {
     if (!variationName.trim()) return
     onCreateVariation(variationName.trim())
@@ -178,10 +198,10 @@ export default function RecipeView({
   ]
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="bg-white border-b border-[--border] px-6 pt-5 pb-0">
+      <div className="bg-white border-b border-[--border] px-6 pt-5 pb-0 flex-shrink-0">
         <div className="flex items-start justify-between mb-1.5">
           <div className="pr-3 flex-1 min-w-0">
             <div className="font-serif text-xl font-medium text-[--text] leading-snug flex items-center gap-2">
@@ -520,6 +540,80 @@ export default function RecipeView({
 
             {/* ── UDF Tags ── */}
             <TagEditor recipe={recipe} onUpdateRecipe={onUpdateRecipe} />
+
+            {/* ── Service & Presentation ── */}
+            <div className="mt-5 pt-5 border-t border-[--border]">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-3">
+                Service & Presentation
+              </div>
+              {isCocktail ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-medium text-[--muted] mb-1">Glassware</label>
+                    <select defaultValue={sw.glass ?? ''}
+                      onChange={e => updateSW({ glass: e.target.value })}
+                      className="w-48 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
+                      <option value="">— Select glass —</option>
+                      {GLASSES.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] font-medium text-[--muted]">Garnish</label>
+                      <button onClick={addGarnish} className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium">+ Add garnish</button>
+                    </div>
+                    {(sw.garnishes ?? []).length === 0 && (
+                      <p className="text-[11px] text-[--hint]">No garnish specified</p>
+                    )}
+                    <div className="space-y-2">
+                      {(sw.garnishes ?? []).map(g => (
+                        <div key={g.id} className="flex items-center gap-2 flex-wrap">
+                          <input type="number" min="0.5" step="0.5" defaultValue={g.qty}
+                            onBlur={e => updateGarnish(g.id, { qty: parseFloat(e.target.value) || 1 })}
+                            className="w-12 px-2 py-1 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] text-center" />
+                          <select defaultValue={g.item} onChange={e => updateGarnish(g.id, { item: e.target.value })}
+                            className="px-2 py-1 text-xs border border-[--border-2] rounded-lg outline-none bg-white capitalize">
+                            {GARNISH_ITEMS.map(i => <option key={i} value={i}>{i}</option>)}
+                          </select>
+                          <select defaultValue={g.prep} onChange={e => updateGarnish(g.id, { prep: e.target.value })}
+                            className="px-2 py-1 text-xs border border-[--border-2] rounded-lg outline-none bg-white">
+                            {GARNISH_PREPS.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                          <select defaultValue={g.presentation} onChange={e => updateGarnish(g.id, { presentation: e.target.value })}
+                            className="px-2 py-1 text-xs border border-[--border-2] rounded-lg outline-none bg-white">
+                            {GARNISH_PRES.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                          <button onClick={() => removeGarnish(g.id)} className="text-[--hint] hover:text-red-400 text-xs">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-medium text-[--muted] mb-1">Primary Vessel</label>
+                    <select defaultValue={sw.vessel ?? ''}
+                      onChange={e => updateSW({ vessel: e.target.value })}
+                      className="w-48 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
+                      <option value="">— Select vessel —</option>
+                      {VESSELS.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-[--muted] mb-1.5">Required Flatware</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {FLATWARE.map(f => (
+                        <button key={f} onClick={() => toggleFlatware(f)}
+                          className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${(sw.flatware ?? []).includes(f) ? 'bg-[--accent-light] border-[--accent] text-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
         {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} />}

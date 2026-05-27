@@ -163,6 +163,8 @@ export interface Recipe {
   menu_description?: string
   internal_notes?: string
   is_component_recipe?: boolean
+  // Service ware (Phase 4)
+  service_ware?: ServiceWare
   created_at?: string
 }
 
@@ -197,6 +199,22 @@ export interface MenuVersionItem {
   date_added: string
   date_removed?: string | null
   notes: string
+}
+
+// ── Service ware types (Phase 4) ──────────────────────────────
+export interface Garnish {
+  id: string
+  qty: number
+  item: string
+  prep: string         // expressed | skewered | fresh | dehydrated | flamed | etc.
+  presentation: string // on rim | in drink | on pick | on side | floated | etc.
+}
+
+export interface ServiceWare {
+  vessel?: string       // for food: "Pasta bowl", "Dinner plate 10\"", etc.
+  flatware?: string[]   // for food: ["Pasta fork", "Steak knife"]
+  glass?: string        // for cocktails: "Rocks glass", "Coupe", etc.
+  garnishes?: Garnish[] // for cocktails: structured garnish rows
 }
 
 // ── Vendor & library types ────────────────────────────────────

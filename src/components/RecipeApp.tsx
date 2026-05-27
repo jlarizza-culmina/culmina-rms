@@ -14,9 +14,11 @@ interface Props {
   user: User
   restaurantId?: string
   ctx?: AppContext
+  onSubPageChange?: (title: string) => void
+  onNavigateHome?: () => void
 }
 
-export default function RecipeApp({ user, restaurantId, ctx }: Props) {
+export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, onNavigateHome }: Props) {
   const supabase = createClient()
 
   // ── Data state ───────────────────────────────────────────────
@@ -98,7 +100,7 @@ export default function RecipeApp({ user, restaurantId, ctx }: Props) {
     const added: Recipe[] = data.map(r => ({ ...r, servings: r.base_servings }))
     setRecipes(prev => [...added, ...prev])
     setServings(prev => { const n = { ...prev }; added.forEach(r => { n[r.id] = r.base_servings }); return n })
-    if (added.length === 1) { setActiveId(added[0].id); setActiveTab('overview') }
+    if (added.length === 1) { setActiveId(added[0].id); setActiveTab('overview'); onSubPageChange?.(added[0].name ?? '') }
   }, [user.id, restaurantId, supabase])
 
   const handleUpdateRecipe = useCallback(async (id: string, updates: Partial<Recipe>) => {
@@ -187,21 +189,14 @@ export default function RecipeApp({ user, restaurantId, ctx }: Props) {
     setPrepSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
-  function goBack() { setActiveId(null); setActiveTab('overview') }
+  function goBack() { setActiveId(null); setActiveTab('overview'); onSubPageChange?.('') }
 
   // ── Render ───────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[--bg]">
       {activeId && activeRecipe ? (
         <>
-          {/* Thin back bar */}
-          <div className="h-10 bg-white border-b border-[--border] flex items-center px-4 flex-shrink-0">
-            <button onClick={goBack}
-              className="flex items-center gap-1.5 text-xs text-[--muted] hover:text-[--text] transition-colors">
-              ← Recipes
-            </button>
-          </div>
-          {/* Full-screen recipe view */}
+          {/* Full-screen recipe view — breadcrumb is in AppShell TopBar */}
           <div className="flex-1 overflow-hidden">
             <RecipeView
               recipe={activeRecipe}
@@ -223,13 +218,17 @@ export default function RecipeApp({ user, restaurantId, ctx }: Props) {
               onCreateVariation={name => handleCreateVariation(activeRecipe.id, name)}
               onBack={goBack}
             />
-          </div>
         </>
       ) : (
         <RecipeListPage
           recipes={recipes}
           loading={loading}
-          onSelect={id => { setActiveId(id); setActiveTab('overview') }}
+          onSelect={id => {
+            const r = recipes.find(x => x.id === id)
+            setActiveId(id)
+            setActiveTab('overview')
+            onSubPageChange?.(r?.name ?? '')
+          }}
           onNewRecipe={() => setAddOpen(true)}
           prepSelected={prepSelected}
           onTogglePrepSelect={togglePrepSelect}
