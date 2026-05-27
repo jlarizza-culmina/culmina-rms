@@ -31,7 +31,7 @@ function foodCostPct(costPerServing: number, price: number): number {
   return (costPerServing / price) * 100
 }
 
-function statusColor(pct: number, target: number | null): string {
+function statusColor(pct: number, target: number | null | undefined): string {
   if (!target) return 'text-[--muted]'
   if (pct <= target) return 'text-[--green]'
   if (pct <= target * 1.1) return 'text-amber-600'
