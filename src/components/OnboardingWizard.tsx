@@ -338,7 +338,7 @@ export default function OnboardingWizard({ user, appUser, onComplete }: Props) {
               disabled={saving}
               className="px-6 py-2.5 text-sm font-medium bg-[--accent] text-white rounded-xl hover:bg-[--accent-dark] transition-colors"
             >
-              Open Culmina →
+              Open CulminaRMS →
             </button>
           )}
         </div>
