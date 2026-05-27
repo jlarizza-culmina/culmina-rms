@@ -448,11 +448,11 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
 }
 
 // ── Shared sub-components ─────────────────────────────────────
-function Label({ children }: { children: React.ReactNode }) {
+function Label({ children }: { children?: React.ReactNode }) {
   return <label className="block text-[11px] font-medium text-[--muted] mb-1">{children}</label>
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children?: React.ReactNode }) {
   return (
     <div className="fixed inset-0 bg-black/35 flex items-center justify-center z-50"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>

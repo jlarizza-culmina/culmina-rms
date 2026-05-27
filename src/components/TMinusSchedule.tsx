@@ -654,7 +654,7 @@ export default function TMinusSchedule({ recipes, userId }: Props) {
                   <div className="text-[10px] text-[--hint]">{hourTasks.length} task{hourTasks.length !== 1 ? 's' : ''}</div>
                 </div>
                 <div className="space-y-1.5">
-                  {hourTasks.map(t => <TaskRow key={t.id} task={t} />)}
+                  {hourTasks.map((t: PrepTask) => <TaskRow task={t} />)}
                 </div>
               </div>
             ))}
@@ -694,7 +694,7 @@ export default function TMinusSchedule({ recipes, userId }: Props) {
                     <div className="flex-1 h-px bg-[--border]" />
                   </div>
                   <div className="space-y-1.5">
-                    {staffTasks.sort((a, b) => a.startMinutes - b.startMinutes).map(t => <TaskRow key={t.id} task={t} />)}
+                    {staffTasks.sort((a, b) => a.startMinutes - b.startMinutes).map(t => <TaskRow task={t} />)}
                   </div>
                 </div>
               )

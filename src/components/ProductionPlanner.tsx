@@ -196,7 +196,7 @@ export default function ProductionPlanner({ recipes, library, vendors, userId }:
     : { kitchen: [], bar: [] },
   [step, menuRecipes, covers, wastePct, library, vendors])
 
-  const totalCoveredRecipes = Object.values(covers).filter(v => v > 0).length
+  const totalCoveredRecipes = Object.values(covers).filter((v): v is number => Number(v) > 0).length
   const kitchenCost = kitchen.reduce((s, i) => s + (i.total_cost ?? 0), 0)
   const barCost     = bar.reduce((s, i) => s + (i.total_cost ?? 0), 0)
 
@@ -488,7 +488,7 @@ export default function ProductionPlanner({ recipes, library, vendors, userId }:
         <div className="px-6 py-3 bg-white border-t border-[--border] flex items-center gap-3">
           <div className="text-xs text-[--muted]">
             {totalCoveredRecipes > 0
-              ? `${totalCoveredRecipes} recipe${totalCoveredRecipes !== 1 ? 's' : ''} scheduled · ${Object.values(covers).reduce((s, v) => s + v, 0)} total covers`
+              ? `${totalCoveredRecipes} recipe${totalCoveredRecipes !== 1 ? 's' : ''} scheduled · ${Object.values(covers).reduce((s: number, v) => s + Number(v), 0)} total covers`
               : 'No covers entered yet'}
           </div>
           <button
@@ -615,7 +615,7 @@ export default function ProductionPlanner({ recipes, library, vendors, userId }:
           </div>
         ) : (
           <div className="space-y-6">
-            {Object.entries(byVendor).map(([vendorName, items]) => (
+            {(Object.entries(byVendor) as [string, typeof byVendor[string]][]).map(([vendorName, items]) => (
               <div key={vendorName}>
                 {/* Vendor header */}
                 <div className="flex items-center gap-3 mb-3">
