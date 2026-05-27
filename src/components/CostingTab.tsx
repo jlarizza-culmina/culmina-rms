@@ -270,8 +270,8 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
               </thead>
               <tbody>
                 {pricing.map(p => {
-                  const fcp = costPerServ > 0 ? foodCostPct(costPerServ * p.serving_multiplier, p.price) : null
-                  const margin = p.price > 0 ? p.price - costPerServ * p.serving_multiplier : null
+                  const fcp: number | null = costPerServ > 0 ? foodCostPct(costPerServ * p.serving_multiplier, p.price) : null
+                  const margin: number | null = p.price > 0 ? p.price - costPerServ * p.serving_multiplier : null
                   return (
                     <tr key={p.id} className="border-t border-[--border] group">
                       <td className="py-2 px-3 text-[--text]">{DAYPART_LABELS[p.daypart as Daypart] ?? p.daypart}</td>
