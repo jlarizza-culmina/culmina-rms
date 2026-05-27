@@ -145,7 +145,6 @@ export interface Recipe {
   target_food_cost_pct?: number | null
   // Lifecycle
   is_active?: boolean
-  recipe_stage?: RecipeStage
   // Allergens & dietary
   allergens?: string[]
   dietary?: string[]
