@@ -135,6 +135,14 @@ export default function AppShell({ user }: Props) {
     )
   }
 
+  // ── Apply branding CSS variables ────────────────────────────
+  const brandColor = restaurant.branding?.primaryColor ?? '#C05A2A'
+  function darken(hex: string): string {
+    const n = parseInt(hex.slice(1), 16)
+    const f = (v: number) => Math.max(0, v - 26).toString(16).padStart(2,'0')
+    return '#' + f(n>>16) + f((n>>8)&0xff) + f(n&0xff)
+  }
+
   // ── Build context object ───────────────────────────────────
   const ctx: AppContext = {
     restaurant,
@@ -150,6 +158,16 @@ export default function AppShell({ user }: Props) {
   const isAdmin       = ['super_admin','admin'].includes(ctx.role)
 
   // ── Top bar ────────────────────────────────────────────────
+  const BrandStyle = () => restaurant.branding?.primaryColor ? (
+    <style>{`
+      :root {
+        --accent: ${brandColor};
+        --accent-dark: ${darken(brandColor)};
+        --accent-light: ${brandColor}18;
+      }
+    `}</style>
+  ) : null
+
   const TopBar = () => (
     <header className="h-12 bg-white border-b border-[--border] flex items-center px-4 gap-2 flex-shrink-0 z-10">
       {module === 'home' ? (
@@ -209,6 +227,7 @@ export default function AppShell({ user }: Props) {
   if (module === 'superadmin' && ctx.isSuperAdmin) {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-hidden">
           <SuperAdmin onBack={() => navigate('home')} />
@@ -221,6 +240,7 @@ export default function AppShell({ user }: Props) {
   if (module === 'settings') {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-hidden">
           <SettingsPage
@@ -238,6 +258,7 @@ export default function AppShell({ user }: Props) {
   if (module === 'home') {
     return (
       <div className="h-screen flex flex-col overflow-hidden bg-[--bg]">
+        <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-auto">
           <ModuleLauncher
@@ -255,6 +276,7 @@ export default function AppShell({ user }: Props) {
   if (module === 'recipes') {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-hidden">
           <RecipeApp

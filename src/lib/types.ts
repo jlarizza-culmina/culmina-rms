@@ -52,6 +52,10 @@ export interface Location {
   email: string
   is_primary: boolean
   is_active: boolean
+  acquired_date?: string | null
+  opened_date?: string | null
+  end_date?: string | null
+  seasons?: string[]
   created_at?: string
 }
 
