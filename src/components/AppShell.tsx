@@ -89,34 +89,16 @@ export default function AppShell({ user }: Props) {
   useEffect(() => { loadContext() }, [loadContext])
 
   // ── After onboarding completes ─────────────────────────────
+  // RPC already created the member row and migrated recipes
   const handleOnboardingComplete = useCallback(async (
     newRestaurant: Restaurant,
     newLocation: Location
   ) => {
     setRestaurant(newRestaurant)
     setLocations([newLocation])
-
-    // Create restaurant_member row for this user as admin
-    const { data: mem } = await supabase
-      .from('restaurant_members')
-      .insert({
-        restaurant_id: newRestaurant.id,
-        user_id: user.id,
-        role: 'admin',
-      })
-      .select()
-      .single()
-    if (mem) setMember(mem)
-
-    // Migrate existing user_id-scoped recipes to restaurant_id
-    await supabase
-      .from('recipes')
-      .update({ restaurant_id: newRestaurant.id })
-      .eq('user_id', user.id)
-      .is('restaurant_id', null)
-
+    setMember({ id: '', restaurant_id: newRestaurant.id, user_id: user.id, role: 'admin', is_active: true })
     setModule('home')
-  }, [user.id, supabase])
+  }, [user.id])
 
   // ── Navigate to a module ───────────────────────────────────
   function navigate(m: AppModule, title = '') {

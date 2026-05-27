@@ -49,41 +49,20 @@ export default function OnboardingWizard({ user, appUser, onComplete }: Props) {
     setSaving(true)
     setError('')
     try {
-      // Create restaurant
-      const { data: rest, error: restErr } = await supabase
-        .from('restaurants')
-        .insert({
-          name: rName.trim(),
-          description: rDescription.trim(),
-          cuisine_type: rCuisine,
-          dish_mode: dishMode,
-          is_active: true,
-        })
-        .select()
-        .single()
-
-      if (restErr || !rest) throw new Error(restErr?.message ?? 'Failed to create restaurant')
-
-      // Create primary location
-      const { data: loc, error: locErr } = await supabase
-        .from('locations')
-        .insert({
-          restaurant_id: rest.id,
-          name: lName.trim() || 'Main',
-          address: lAddress.trim(),
-          city: lCity.trim(),
-          state: lState.trim(),
-          zip: lZip.trim(),
-          timezone: lTimezone,
-          is_primary: true,
-          is_active: true,
-        })
-        .select()
-        .single()
-
-      if (locErr || !loc) throw new Error(locErr?.message ?? 'Failed to create location')
-
-      onComplete(rest as Restaurant, loc as Location)
+      const { data, error } = await supabase.rpc('create_restaurant_onboarding', {
+        p_name:        rName.trim(),
+        p_description: rDescription.trim(),
+        p_cuisine:     rCuisine,
+        p_dish_mode:   dishMode,
+        p_loc_name:    lName.trim() || 'Main',
+        p_address:     lAddress.trim(),
+        p_city:        lCity.trim(),
+        p_state:       lState.trim(),
+        p_zip:         lZip.trim(),
+        p_timezone:    lTimezone,
+      })
+      if (error) throw new Error(error.message)
+      onComplete(data.restaurant as Restaurant, data.location as Location)
     } catch (e) {
       setError(String(e))
       setSaving(false)
