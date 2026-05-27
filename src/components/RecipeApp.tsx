@@ -141,6 +141,40 @@ export default function RecipeApp({ user, restaurantId, ctx }: Props) {
     await handleUpdateRecipe(recipeId, { version: currentVersion + 1 })
   }, [recipes, user.id, restaurantId, supabase, handleUpdateRecipe])
 
+  const handleCloneRecipe = useCallback(async (recipeId: string) => {
+    const recipe = recipes.find(r => r.id === recipeId)
+    if (!recipe) return
+    const { id: _id, created_at: _c, servings: _s, ...rest } = recipe as Recipe & { created_at?: string }
+    const { data } = await supabase.from('recipes').insert({
+      ...rest, user_id: user.id, restaurant_id: restaurantId ?? null,
+      name: `${recipe.name} (Copy)`, recipe_stage: 'development',
+      is_special: false, parent_recipe_id: null, version: 1,
+    }).select().single()
+    if (data) {
+      const cloned: Recipe = { ...data, servings: data.base_servings }
+      setRecipes(prev => [cloned, ...prev])
+      setServings(prev => ({ ...prev, [data.id]: data.base_servings }))
+      setActiveId(data.id)
+    }
+  }, [recipes, user.id, restaurantId, supabase])
+
+  const handleCreateVariation = useCallback(async (recipeId: string, variationName: string) => {
+    const recipe = recipes.find(r => r.id === recipeId)
+    if (!recipe) return
+    const { id: _id, created_at: _c, servings: _s, ...rest } = recipe as Recipe & { created_at?: string }
+    const { data } = await supabase.from('recipes').insert({
+      ...rest, user_id: user.id, restaurant_id: restaurantId ?? null,
+      name: variationName, recipe_stage: 'development',
+      is_special: false, parent_recipe_id: recipeId, version: 1,
+    }).select().single()
+    if (data) {
+      const variation: Recipe = { ...data, servings: data.base_servings }
+      setRecipes(prev => [variation, ...prev])
+      setServings(prev => ({ ...prev, [data.id]: data.base_servings }))
+      setActiveId(data.id)
+    }
+  }, [recipes, user.id, restaurantId, supabase])
+
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Remove this recipe?')) return
     await supabase.from('recipes').delete().eq('id', id)
@@ -283,8 +317,12 @@ export default function RecipeApp({ user, restaurantId, ctx }: Props) {
 
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-medium text-[--text] truncate">{r.name}</div>
-                    <div className="text-[10px] text-[--muted] mt-0.5 flex items-center gap-1">
+                    <div className="text-[10px] text-[--muted] mt-0.5 flex items-center gap-1 flex-wrap">
                       <span>{STATUS_LABELS[status]}</span>
+                      {r.recipe_stage && r.recipe_stage !== 'active' && (
+                        <span className="capitalize opacity-70">· {r.recipe_stage.replace('_',' ')}</span>
+                      )}
+                      {r.is_special && <span className="text-amber-600">· ⭐</span>}
                       {r.ranking && <span>· {'★'.repeat(r.ranking)}</span>}
                     </div>
                   </div>
@@ -326,6 +364,8 @@ export default function RecipeApp({ user, restaurantId, ctx }: Props) {
             onCookMode={() => setCookMode(true)}
             onUpdateRecipe={handleUpdateRecipe}
             onSaveVersion={handleSaveVersion}
+            onClone={() => handleCloneRecipe(activeRecipe.id)}
+            onCreateVariation={name => handleCreateVariation(activeRecipe.id, name)}
           />
         )}
       </main>

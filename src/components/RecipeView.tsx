@@ -1,6 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
-import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor } from '@/lib/types'
+import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient } from '@/lib/types'
 import CostingTab from './CostingTab'
 import { printRecipeCard, recipeToText } from '@/lib/recipeExport'
 
@@ -18,6 +18,26 @@ const PHASE_META: Record<CookPhase, { label: string; icon: string; color: string
   cook:  { label: 'Cook',          icon: '🔥', color: 'bg-orange-50 text-orange-700 border-orange-200' },
   plate: { label: 'Plate & Finish', icon: '✨', color: 'bg-green-50 text-green-700 border-green-200' },
 }
+
+const STAGES: { value: RecipeStage; label: string; color: string; dot: string }[] = [
+  { value: 'development',        label: 'Dev',       color: 'bg-purple-50 text-purple-700 border-purple-200',   dot: '#9333EA' },
+  { value: 'testing',            label: 'Testing',   color: 'bg-yellow-50 text-yellow-700 border-yellow-200',   dot: '#CA8A04' },
+  { value: 'active',             label: 'Active',    color: 'bg-green-50 text-green-600 border-green-200',      dot: '#2E6B25' },
+  { value: 'specials_candidate', label: 'Special?',  color: 'bg-amber-50 text-amber-700 border-amber-200',      dot: '#D97706' },
+  { value: 'retired',            label: 'Retired',   color: 'bg-gray-50 text-gray-400 border-gray-200',         dot: '#B0AB9E' },
+]
+const SEASONS = ['spring','summer','fall','winter']
+const SEASON_ICONS: Record<string, string> = { spring:'🌸', summer:'☀️', fall:'🍂', winter:'❄️' }
+const INGREDIENT_UNITS = [
+  'each','g','kg','oz','lb','ml','l','tsp','tbsp','cup',
+  'fl oz','sprig','pinch','bunch','clove','slice','sheet','piece','to taste',
+]
+const PREP_METHODS = [
+  '—','whole','rough chopped','chopped','finely chopped','minced','julienned',
+  'diced','small dice','medium dice','large dice','sliced','thinly sliced',
+  'torn','grated','zested','peeled','brunoise','chiffonade','halved',
+  'quartered','crushed','pressed',
+]
 
 function scaleAmt(amount: number, ratio: number): string {
   const v = amount * ratio
@@ -45,12 +65,15 @@ interface Props {
   onCookMode: () => void
   onUpdateRecipe: (id: string, updates: Partial<Recipe>) => Promise<void>
   onSaveVersion: (id: string, note: string) => Promise<void>
+  onClone: () => void
+  onCreateVariation: (name: string) => void
 }
 
 export default function RecipeView({
   recipe, servings, checks, activeTab, library, vendors, userId,
   onTabChange, onServingsChange, onToggleCheck, onClearChecks,
-  onDelete, onCookMode, onUpdateRecipe, onSaveVersion
+  onDelete, onCookMode, onUpdateRecipe, onSaveVersion,
+  onClone, onCreateVariation,
 }: Props) {
   const ratio = servings / recipe.base_servings
   const isCocktail = recipe.recipe_type === 'cocktail'
@@ -62,6 +85,9 @@ export default function RecipeView({
   const [savingVersion,    setSavingVersion]    = useState(false)
   const [showAllergenEdit, setShowAllergenEdit] = useState(false)
   const [copied,           setCopied]           = useState(false)
+  const [showVariationModal, setShowVariationModal] = useState(false)
+  const [variationName,      setVariationName]      = useState('')
+  const [serverNotesDraft,   setServerNotesDraft]   = useState(recipe.server_notes ?? '')
 
   // ── Auto-detect allergens from linked library ingredients ─
   const detectedAllergens = useMemo(() => {
@@ -106,6 +132,38 @@ export default function RecipeView({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // ── Phase 2 handlers ─────────────────────────────────────
+  async function setStage(stage: RecipeStage) {
+    await onUpdateRecipe(recipe.id, { recipe_stage: stage })
+  }
+  async function toggleSeason(s: string) {
+    const cur = recipe.seasons ?? []
+    await onUpdateRecipe(recipe.id, { seasons: cur.includes(s) ? cur.filter(x => x !== s) : [...cur, s] })
+  }
+  async function toggleSpecial() {
+    await onUpdateRecipe(recipe.id, { is_special: !(recipe.is_special ?? false) })
+  }
+  async function updateIngredient(ingId: string, field: keyof Ingredient, value: string | number) {
+    const updated = recipe.ingredients.map(i => i.id === ingId ? { ...i, [field]: value } : i)
+    await onUpdateRecipe(recipe.id, { ingredients: updated })
+  }
+  async function addIngredient() {
+    const newIng: Ingredient = { id: crypto.randomUUID(), name: '', amount: 1, unit: 'each', category: 'other', prep_method: '', prep_notes: '' }
+    await onUpdateRecipe(recipe.id, { ingredients: [...recipe.ingredients, newIng] })
+  }
+  async function deleteIngredient(ingId: string) {
+    await onUpdateRecipe(recipe.id, { ingredients: recipe.ingredients.filter(i => i.id !== ingId) })
+  }
+  async function saveServerNotes() {
+    await onUpdateRecipe(recipe.id, { server_notes: serverNotesDraft })
+  }
+  function doCreateVariation() {
+    if (!variationName.trim()) return
+    onCreateVariation(variationName.trim())
+    setShowVariationModal(false)
+    setVariationName('')
+  }
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview',  label: 'Overview' },
     { key: 'plan',      label: isCocktail ? 'Build Guide' : 'Cook Plan' },
@@ -120,14 +178,19 @@ export default function RecipeView({
       {/* ── Header ── */}
       <div className="bg-white border-b border-[--border] px-6 pt-5 pb-0">
         <div className="flex items-start justify-between mb-1.5">
-          <h1 className="font-serif text-xl font-medium text-[--text] leading-snug pr-3 flex items-center gap-2">
-            {isCocktail ? '🍸' : ''} {recipe.name}
-            {(recipe.version ?? 1) > 1 && (
-              <span className="text-[10px] font-sans font-normal text-[--hint] bg-[--surface-2] px-1.5 py-0.5 rounded-full">
-                v{recipe.version}
-              </span>
+          <div className="pr-3">
+            <h1 className="font-serif text-xl font-medium text-[--text] leading-snug flex items-center gap-2">
+              {isCocktail ? '🍸' : ''} {recipe.name}
+              {(recipe.version ?? 1) > 1 && (
+                <span className="text-[10px] font-sans font-normal text-[--hint] bg-[--surface-2] px-1.5 py-0.5 rounded-full">
+                  v{recipe.version}
+                </span>
+              )}
+            </h1>
+            {recipe.parent_recipe_id && (
+              <div className="text-[10px] text-[--muted] mt-0.5">✦ Variation</div>
             )}
-          </h1>
+          </div>
           <div className="flex gap-1.5 flex-shrink-0">
             <button onClick={onCookMode} title={isCocktail ? 'Build guide' : 'Cook mode'}
               className="px-3 py-1.5 rounded-lg border border-[--border-2] text-xs text-[--muted] hover:bg-[--surface-2] transition-colors">
@@ -159,6 +222,18 @@ export default function RecipeView({
             <button onClick={() => setShowVersionModal(true)} title="Save a version snapshot"
               className="px-3 py-1.5 rounded-lg border border-[--border-2] text-xs text-[--muted] hover:bg-[--surface-2] transition-colors">
               📌 v{recipe.version ?? 1}
+            </button>
+
+            {/* Clone */}
+            <button onClick={onClone} title="Clone this recipe"
+              className="px-3 py-1.5 rounded-lg border border-[--border-2] text-xs text-[--muted] hover:bg-[--surface-2] transition-colors">
+              ⎘ Clone
+            </button>
+
+            {/* Variation */}
+            <button onClick={() => setShowVariationModal(true)} title="Create a variation"
+              className="px-3 py-1.5 rounded-lg border border-[--border-2] text-xs text-[--muted] hover:bg-[--surface-2] transition-colors">
+              ✦ Variation
             </button>
 
             <button onClick={onDelete} className="text-[--hint] hover:text-red-500 text-sm px-1.5 transition-colors" title="Delete">✕</button>
@@ -271,7 +346,117 @@ export default function RecipeView({
 
       {/* ── Tab Content ── */}
       <div className="flex-1 overflow-y-auto px-6 py-5">
-        {activeTab === 'overview' && <OverviewTab recipe={recipe} ratio={ratio} isCocktail={isCocktail} />}
+        {activeTab === 'overview' && (
+          <div>
+            {isCocktail && recipe.cocktail_details && (
+              <div className="mb-5 p-4 bg-[--surface-2] rounded-xl border border-[--border] grid grid-cols-2 gap-3">
+                <Detail label="Base Spirit" value={recipe.cocktail_details.baseSpirit} />
+                <Detail label="Technique" value={recipe.cocktail_details.technique} capitalize />
+                <Detail label="Glassware" value={recipe.cocktail_details.glassware} />
+                <Detail label="Ice" value={recipe.cocktail_details.ice} capitalize />
+                <Detail label="Garnish" value={recipe.cocktail_details.garnish} />
+                <Detail label="ABV" value={`~${recipe.cocktail_details.abv}%`} />
+              </div>
+            )}
+            <div className="mb-4">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Stage</div>
+              <div className="flex flex-wrap gap-1.5">
+                {STAGES.map(s => (
+                  <button key={s.value} onClick={() => setStage(s.value)}
+                    className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${(recipe.recipe_stage ?? 'development') === s.value ? s.color + ' font-medium' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
+                    {s.label}
+                  </button>
+                ))}
+                <button onClick={toggleSpecial}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${recipe.is_special ? 'bg-amber-50 text-amber-700 border-amber-300 font-medium' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
+                  ⭐ {recipe.is_special ? 'On specials' : 'Flag as special'}
+                </button>
+              </div>
+            </div>
+            <div className="mb-4">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Season</div>
+              <div className="flex gap-1.5">
+                {SEASONS.map(s => {
+                  const active = (recipe.seasons ?? []).includes(s)
+                  return (
+                    <button key={s} onClick={() => toggleSeason(s)}
+                      className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors capitalize ${active ? 'bg-[--accent-light] border-[--accent] text-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
+                      {SEASON_ICONS[s]} {s}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-serif text-sm font-medium text-[--text] flex items-baseline gap-2">
+                  Ingredients <span className="font-sans text-[11px] font-normal text-[--muted]">{recipe.ingredients.length} items</span>
+                </h3>
+                <button onClick={addIngredient} className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium transition-colors">+ Add ingredient</button>
+              </div>
+              <div className="border border-[--border] rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-[--surface-2] border-b border-[--border]">
+                      <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide w-14">Qty</th>
+                      <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide w-20">Unit</th>
+                      <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide">Ingredient</th>
+                      <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide w-28">Prep Method</th>
+                      <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide">Notes</th>
+                      <th className="w-5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recipe.ingredients.map((ing, idx) => (
+                      <tr key={ing.id} className={`border-b border-[--border] last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-[--surface-2]/30'}`}>
+                        <td className="px-2 py-1">
+                          <input type="number" min="0" step="0.1" defaultValue={ing.amount}
+                            onBlur={e => updateIngredient(ing.id, 'amount', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-transparent outline-none text-xs text-[--accent] font-medium px-1 py-0.5 focus:bg-white focus:border focus:border-[--accent] rounded" />
+                        </td>
+                        <td className="px-2 py-1">
+                          <select defaultValue={ing.unit} onChange={e => updateIngredient(ing.id, 'unit', e.target.value)}
+                            className="w-full bg-transparent outline-none text-xs text-[--text] cursor-pointer">
+                            {INGREDIENT_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1">
+                          <input defaultValue={ing.name} onBlur={e => updateIngredient(ing.id, 'name', e.target.value)}
+                            placeholder="name" className="w-full bg-transparent outline-none text-xs text-[--text] px-1 py-0.5 focus:bg-white focus:border focus:border-[--accent] rounded" />
+                        </td>
+                        <td className="px-2 py-1">
+                          <select defaultValue={ing.prep_method || '—'} onChange={e => updateIngredient(ing.id, 'prep_method', e.target.value === '—' ? '' : e.target.value)}
+                            className="w-full bg-transparent outline-none text-xs text-[--muted] cursor-pointer">
+                            {PREP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1">
+                          <input defaultValue={ing.prep_notes || ''} onBlur={e => updateIngredient(ing.id, 'prep_notes', e.target.value)}
+                            placeholder="notes…" className="w-full bg-transparent outline-none text-xs text-[--muted] px-1 py-0.5 focus:bg-white focus:border focus:border-[--accent] rounded" />
+                        </td>
+                        <td className="px-1 py-1">
+                          <button onClick={() => deleteIngredient(ing.id)} className="text-[--hint] hover:text-red-400 text-[11px] px-0.5 transition-colors">✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {recipe.ingredients.length === 0 && (
+                  <div className="text-center py-4 text-xs text-[--hint]">No ingredients — click + Add ingredient above</div>
+                )}
+              </div>
+            </div>
+            <div className="mb-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">
+                Server Notes <span className="font-normal normal-case text-[--hint]">— visible to FOH</span>
+              </div>
+              <textarea value={serverNotesDraft} onChange={e => setServerNotesDraft(e.target.value)} onBlur={saveServerNotes}
+                placeholder="How to describe this dish, common questions, upsell options, pairing suggestions…"
+                rows={3}
+                className="w-full px-3 py-2 text-xs border border-[--border-2] rounded-xl outline-none focus:border-[--accent] resize-none placeholder:text-[--hint]" />
+            </div>
+          </div>
+        )}
         {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} />}
         {activeTab === 'nutrition' && <NutritionTab recipe={recipe} ratio={ratio} isCocktail={isCocktail} servings={servings} />}
         {activeTab === 'shopping' && (
@@ -288,6 +473,32 @@ export default function RecipeView({
           />
         )}
       </div>
+
+      {/* ── Variation modal ── */}
+      {showVariationModal && (
+        <div className="fixed inset-0 bg-black/35 flex items-center justify-center z-50"
+          onClick={e => { if (e.target === e.currentTarget) setShowVariationModal(false) }}>
+          <div className="bg-white rounded-2xl p-6 w-[400px] max-w-[94vw] shadow-lg">
+            <h2 className="font-serif text-lg font-medium text-[--text] mb-1">Create variation</h2>
+            <p className="text-xs text-[--muted] mb-4">
+              Creates a new recipe based on <strong>{recipe.name}</strong>. You can then change ingredients or steps while keeping the original intact.
+            </p>
+            <label className="block text-[11px] font-medium text-[--muted] mb-1.5">Variation name *</label>
+            <input value={variationName} onChange={e => setVariationName(e.target.value)}
+              placeholder={`e.g. "${recipe.name} with Wild Boar"`}
+              className="w-full px-3 py-2 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] mb-4"
+              autoFocus onKeyDown={e => e.key === 'Enter' && doCreateVariation()} />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowVariationModal(false)}
+                className="px-4 py-2 text-xs text-[--muted] border border-[--border-2] rounded-lg hover:bg-[--surface-2]">Cancel</button>
+              <button onClick={doCreateVariation} disabled={!variationName.trim()}
+                className="px-4 py-2 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-40">
+                ✦ Create variation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Version snapshot modal ── */}
       {showVersionModal && (

@@ -83,6 +83,8 @@ export interface Ingredient {
   unit: string
   category: string
   library_id?: string | null
+  prep_method?: string   // 'chopped', 'diced', 'julienned', etc.
+  prep_notes?: string    // 'from Teitel', 'brunoise for service'
 }
 
 export interface Step {
@@ -151,6 +153,13 @@ export interface Recipe {
   version?: number
   parent_version_id?: string | null
   notes?: string
+  // Lifecycle & curation (Phase 2)
+  seasons?: string[]
+  recipe_stage?: RecipeStage
+  is_special?: boolean
+  server_notes?: string
+  parent_recipe_id?: string | null
+  variation_overrides?: Record<string, unknown> | null
   created_at?: string
 }
 
