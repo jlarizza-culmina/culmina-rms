@@ -278,13 +278,13 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
                       <td className="py-2 px-3 text-[--muted]">{p.serving_label || '—'}</td>
                       <td className="py-2 px-3 font-medium text-[--text]">${p.price.toFixed(2)}</td>
                       <td className={`py-2 px-3 font-medium ${fcp != null ? statusColor(fcp, target) : 'text-[--hint]'}`}>
-                        {fcp !== null ? fmtPct(fcp) : '—'}
+                        {fcp != null ? fmtPct(fcp) : '—'}
                       </td>
                       <td className="py-2 px-3 text-[--muted]">
-                        {margin !== null ? fmt$(margin) : '—'}
+                        {margin != null ? fmt$(margin) : '—'}
                       </td>
                       <td className="py-2 px-3">
-                        {fcp !== null && target ? (
+                        {fcp != null && target ? (
                           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${fcp <= target ? 'bg-[--green]/10 text-[--green]' : 'bg-red-50 text-red-500'}`}>
                             {fcp <= target ? `✓ ${fmtPct(target - fcp)} under` : `↑ ${fmtPct(fcp - target)} over`}
                           </span>
