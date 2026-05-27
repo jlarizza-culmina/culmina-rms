@@ -39,6 +39,13 @@ const PREP_METHODS = [
   'quartered','crushed','pressed',
 ]
 
+const VESSELS = ['Pasta bowl','Side plate','Dinner plate 10"','Dinner plate 12"','Oval platter','Wooden board','Slate board','Small plate','Soup bowl','Coupe bowl','Cast iron skillet','Other']
+const FLATWARE = ['Dinner fork','Dinner knife','Dessert fork','Dessert spoon','Soup spoon','Pasta fork','Steak knife','Fish knife','Fish fork','Shrimp fork','Cocktail pick','Cocktail stirrer','Demitasse spoon','Espresso spoon','Tongs']
+const GLASSES = ['Rocks glass','Double rocks','Highball','Collins','Coupe','Nick & Nora','Martini','Wine — red','Wine — white','Champagne flute','Champagne coupe','Espresso cup','Demitasse','Beer pint','Stemless wine','Other']
+const GARNISH_ITEMS = ['lemon twist','lemon wedge','lime wedge','orange twist','olive','cherry','mint sprig','cucumber slice','dehydrated orange','salt','sugar','other']
+const GARNISH_PREPS = ['fresh','expressed','skewered','dehydrated','flamed','sugar-rimmed','salt-rimmed']
+const GARNISH_PRES  = ['on rim','in drink','on pick','on side','floated']
+
 function scaleAmt(amount: number, ratio: number): string {
   const v = amount * ratio
   if (v <= 0) return '—'
