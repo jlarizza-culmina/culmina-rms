@@ -528,7 +528,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
 }
 
 // ── Shared sub-components ─────────────────────────────────────
-function Field({ label, children, cls = '' }: { label: string; children: React.ReactNode; cls?: string }) {
+function Field({ label, children, cls = '' }: { label: string; children?: React.ReactNode; cls?: string }) {
   return (
     <div className={cls}>
       <label className="block text-[11px] font-medium text-[--muted] mb-1.5">{label}</label>
