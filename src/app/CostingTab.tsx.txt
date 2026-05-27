@@ -277,7 +277,7 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
                       <td className="py-2 px-3 text-[--text]">{DAYPART_LABELS[p.daypart as Daypart] ?? p.daypart}</td>
                       <td className="py-2 px-3 text-[--muted]">{p.serving_label || '—'}</td>
                       <td className="py-2 px-3 font-medium text-[--text]">${p.price.toFixed(2)}</td>
-                      <td className={`py-2 px-3 font-medium ${fcp !== null ? statusColor(fcp, target) : 'text-[--hint]'}`}>
+                      <td className={`py-2 px-3 font-medium ${fcp != null ? statusColor(fcp, target) : 'text-[--hint]'}`}>
                         {fcp !== null ? fmtPct(fcp) : '—'}
                       </td>
                       <td className="py-2 px-3 text-[--muted]">
