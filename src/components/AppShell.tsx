@@ -9,7 +9,7 @@ import RecipeApp from './RecipeApp'
 import IngredientLibrary from './IngredientLibrary'
 import ProductionPlanner from './ProductionPlanner'
 import TMinusSchedule from './TMinusSchedule'
-import CostReport from './CostReport'
+import AnalyticsModule from './AnalyticsModule'
 import SettingsPage from './SettingsPage'
 import SuperAdmin from './SuperAdmin'
 
@@ -336,9 +336,10 @@ export default function AppShell({ user }: Props) {
   if (module === 'analytics') {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-hidden flex flex-col">
-          <CostReport recipes={[]} library={[]} userId={user.id} />
+          <AnalyticsModule userId={user.id} restaurantId={restaurant.id} />
         </div>
       </div>
     )
