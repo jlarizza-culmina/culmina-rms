@@ -67,13 +67,14 @@ interface Props {
   onSaveVersion: (id: string, note: string) => Promise<void>
   onClone: () => void
   onCreateVariation: (name: string) => void
+  onBack?: () => void
 }
 
 export default function RecipeView({
   recipe, servings, checks, activeTab, library, vendors, userId,
   onTabChange, onServingsChange, onToggleCheck, onClearChecks,
   onDelete, onCookMode, onUpdateRecipe, onSaveVersion,
-  onClone, onCreateVariation,
+  onClone, onCreateVariation, onBack,
 }: Props) {
   const ratio = servings / recipe.base_servings
   const isCocktail = recipe.recipe_type === 'cocktail'
@@ -85,6 +86,10 @@ export default function RecipeView({
   const [savingVersion,    setSavingVersion]    = useState(false)
   const [showAllergenEdit, setShowAllergenEdit] = useState(false)
   const [copied,           setCopied]           = useState(false)
+  const [editingName,        setEditingName]        = useState(false)
+  const [nameDraft,          setNameDraft]          = useState(recipe.name)
+  const [editingDesc,        setEditingDesc]        = useState(false)
+  const [descDraft,          setDescDraft]          = useState(recipe.description)
   const [showVariationModal, setShowVariationModal] = useState(false)
   const [variationName,      setVariationName]      = useState('')
   const [serverNotesDraft,   setServerNotesDraft]   = useState(recipe.server_notes ?? '')
@@ -178,17 +183,44 @@ export default function RecipeView({
       {/* ── Header ── */}
       <div className="bg-white border-b border-[--border] px-6 pt-5 pb-0">
         <div className="flex items-start justify-between mb-1.5">
-          <div className="pr-3">
-            <h1 className="font-serif text-xl font-medium text-[--text] leading-snug flex items-center gap-2">
-              {isCocktail ? '🍸' : ''} {recipe.name}
+          <div className="pr-3 flex-1 min-w-0">
+            <div className="font-serif text-xl font-medium text-[--text] leading-snug flex items-center gap-2">
+              {isCocktail ? '🍸' : ''}
+              {editingName ? (
+                <input value={nameDraft}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onBlur={() => { onUpdateRecipe(recipe.id, { name: nameDraft }); setEditingName(false) }}
+                  onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
+                  className="font-serif text-xl font-medium bg-white border-b-2 border-[--accent] outline-none w-full"
+                  autoFocus />
+              ) : (
+                <span onClick={() => { setNameDraft(recipe.name); setEditingName(true) }}
+                  className="cursor-text hover:text-[--accent] transition-colors" title="Click to edit name">
+                  {recipe.name}
+                </span>
+              )}
               {(recipe.version ?? 1) > 1 && (
-                <span className="text-[10px] font-sans font-normal text-[--hint] bg-[--surface-2] px-1.5 py-0.5 rounded-full">
+                <span className="text-[10px] font-sans font-normal text-[--hint] bg-[--surface-2] px-1.5 py-0.5 rounded-full flex-shrink-0">
                   v{recipe.version}
                 </span>
               )}
-            </h1>
+            </div>
             {recipe.parent_recipe_id && (
               <div className="text-[10px] text-[--muted] mt-0.5">✦ Variation</div>
+            )}
+            {editingDesc ? (
+              <textarea value={descDraft}
+                onChange={e => setDescDraft(e.target.value)}
+                onBlur={() => { onUpdateRecipe(recipe.id, { description: descDraft }); setEditingDesc(false) }}
+                rows={2}
+                className="text-xs text-[--muted] w-full mt-1 bg-white border border-[--border-2] rounded px-2 py-1 outline-none focus:border-[--accent] resize-none"
+                autoFocus />
+            ) : (
+              <p onClick={() => { setDescDraft(recipe.description); setEditingDesc(true) }}
+                className="text-xs text-[--muted] mt-0.5 cursor-text hover:text-[--text] transition-colors italic"
+                title="Click to edit description">
+                {recipe.description || <span className="opacity-40">Add description…</span>}
+              </p>
             )}
           </div>
           <div className="flex gap-1.5 flex-shrink-0">
@@ -455,6 +487,39 @@ export default function RecipeView({
                 rows={3}
                 className="w-full px-3 py-2 text-xs border border-[--border-2] rounded-xl outline-none focus:border-[--accent] resize-none placeholder:text-[--hint]" />
             </div>
+
+            {/* ── Menu presentation fields ── */}
+            <div className="mt-5 pt-5 border-t border-[--border] space-y-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint]">Menu Presentation</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-medium text-[--muted] mb-1">Menu Name</label>
+                  <input defaultValue={recipe.menu_name ?? ''}
+                    onBlur={e => onUpdateRecipe(recipe.id, { menu_name: e.target.value })}
+                    placeholder={recipe.name}
+                    className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent]" />
+                  <p className="text-[10px] text-[--hint] mt-0.5">Shown on printed menu if different from recipe name</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-[--muted] mb-1">Internal Notes</label>
+                  <input defaultValue={recipe.internal_notes ?? ''}
+                    onBlur={e => onUpdateRecipe(recipe.id, { internal_notes: e.target.value })}
+                    placeholder="Chef notes, sourcing reminders…"
+                    className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent]" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-[--muted] mb-1">Menu Description</label>
+                <textarea defaultValue={recipe.menu_description ?? ''}
+                  onBlur={e => onUpdateRecipe(recipe.id, { menu_description: e.target.value })}
+                  placeholder="As it appears on the printed menu…"
+                  rows={2}
+                  className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-xl outline-none focus:border-[--accent] resize-none placeholder:text-[--hint]" />
+              </div>
+            </div>
+
+            {/* ── UDF Tags ── */}
+            <TagEditor recipe={recipe} onUpdateRecipe={onUpdateRecipe} />
           </div>
         )}
         {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} />}
@@ -535,6 +600,48 @@ export default function RecipeView({
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
+// ── TagEditor ─────────────────────────────────────────────────
+function TagEditor({ recipe, onUpdateRecipe }: { recipe: Recipe; onUpdateRecipe: (id: string, updates: Partial<Recipe>) => Promise<void> }) {
+  const [newTag, setNewTag] = useState('')
+  const tags = recipe.tags ?? []
+
+  async function addTag() {
+    const t = newTag.trim()
+    if (!t || tags.includes(t)) return
+    await onUpdateRecipe(recipe.id, { tags: [...tags, t] })
+    setNewTag('')
+  }
+
+  async function removeTag(t: string) {
+    await onUpdateRecipe(recipe.id, { tags: tags.filter(x => x !== t) })
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Tags</div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {tags.map(t => (
+          <span key={t} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[--surface-2] border border-[--border] text-[--text]">
+            {t}
+            <button onClick={() => removeTag(t)} className="text-[--hint] hover:text-red-400 leading-none">×</button>
+          </span>
+        ))}
+        {tags.length === 0 && <span className="text-[11px] text-[--hint]">No tags yet</span>}
+      </div>
+      <div className="flex gap-1.5">
+        <input value={newTag} onChange={e => setNewTag(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addTag()}
+          placeholder="Add tag…"
+          className="px-2.5 py-1 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] w-36" />
+        <button onClick={addTag} disabled={!newTag.trim()}
+          className="px-2.5 py-1 text-xs bg-[--surface-2] border border-[--border-2] rounded-lg hover:bg-[--cream-3] disabled:opacity-40">
+          +
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function OverviewTab({ recipe, ratio, isCocktail }: { recipe: Recipe; ratio: number; isCocktail: boolean }) {
   return (
     <div>

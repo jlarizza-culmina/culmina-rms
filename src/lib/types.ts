@@ -159,10 +159,45 @@ export interface Recipe {
   server_notes?: string
   parent_recipe_id?: string | null
   variation_overrides?: Record<string, unknown> | null
+  // Menu presentation (Phase 3)
+  menu_description?: string
+  internal_notes?: string
+  is_component_recipe?: boolean
   created_at?: string
 }
 
 export type AIRecipe = Omit<Recipe, 'id' | 'user_id' | 'restaurant_id' | 'servings' | 'created_at'>
+
+// ── Menu types (Phase 3) ──────────────────────────────────────
+export interface Menu {
+  id: string
+  restaurant_id: string
+  location_id?: string | null
+  name: string
+  description: string
+  is_active: boolean
+  created_at?: string
+}
+
+export interface MenuVersion {
+  id: string
+  menu_id: string
+  version_number: number
+  notes: string
+  published_at?: string | null
+  created_at?: string
+}
+
+export interface MenuVersionItem {
+  id: string
+  version_id: string
+  recipe_id: string
+  menu_price?: number | null
+  sort_order: number
+  date_added: string
+  date_removed?: string | null
+  notes: string
+}
 
 // ── Vendor & library types ────────────────────────────────────
 export interface Vendor {
