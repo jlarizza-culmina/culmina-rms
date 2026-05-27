@@ -218,6 +218,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
               onCreateVariation={name => handleCreateVariation(activeRecipe.id, name)}
               onBack={goBack}
             />
+          </div>
         </>
       ) : (
         <RecipeListPage
