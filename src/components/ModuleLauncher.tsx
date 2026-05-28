@@ -51,6 +51,13 @@ const MODULES: ModuleCard[] = [
     color: '#2A61A0',
   },
   {
+    module: 'queue',
+    icon: '🪑',
+    label: 'Queue',
+    description: 'Waitlist & guests',
+    color: '#C05A2A',
+  },
+  {
     module: 'library',
     icon: '📦',
     label: 'Library',
@@ -135,7 +142,7 @@ export default function ModuleLauncher({ ctx, onNavigate, canSeeCosting, isAdmin
           <button
             key={m.module}
             onClick={() => onNavigate(m.module, m.label)}
-            disabled={m.module === 'menus'} // Phase 3 — not built yet
+            disabled={m.module === 'menus'}
             className={`group relative bg-white rounded-2xl border border-[--border] p-5 text-left transition-all
               ${m.module === 'menus'
                 ? 'opacity-40 cursor-not-allowed'
