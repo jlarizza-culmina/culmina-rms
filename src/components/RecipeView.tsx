@@ -170,6 +170,18 @@ export default function RecipeView({
     await onUpdateRecipe(recipe.id, { server_notes: serverNotesDraft })
   }
 
+  // ── Equipment needed ────────────────────────────────────────
+  async function toggleEquipment(item: string) {
+    const cur = recipe.equipment_needed ?? []
+    const updated = cur.includes(item) ? cur.filter(x => x !== item) : [...cur, item]
+    await onUpdateRecipe(recipe.id, { equipment_needed: updated })
+  }
+  async function addEquipment(item: string) {
+    const cur = recipe.equipment_needed ?? []
+    if (!item.trim() || cur.includes(item.trim())) return
+    await onUpdateRecipe(recipe.id, { equipment_needed: [...cur, item.trim()] })
+  }
+
   // ── Service ware helpers ─────────────────────────────────────
   const sw = (recipe.service_ware ?? {}) as ServiceWare
   async function updateSW(patch: Partial<ServiceWare>) {
@@ -548,6 +560,14 @@ export default function RecipeView({
             {/* ── UDF Tags ── */}
             <TagEditor recipe={recipe} onUpdateRecipe={onUpdateRecipe} />
 
+            {/* ── Equipment needed ── */}
+            <EquipmentSection
+              equipment={recipe.equipment_needed ?? []}
+              restaurantId={recipe.restaurant_id}
+              onToggle={toggleEquipment}
+              onAdd={addEquipment}
+            />
+
             {/* ── Service & Presentation ── */}
             <div className="mt-5 pt-5 border-t border-[--border]">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-3">
@@ -701,6 +721,70 @@ export default function RecipeView({
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
+// ── EquipmentSection ─────────────────────────────────────────
+function EquipmentSection({
+  equipment, restaurantId, onToggle, onAdd
+}: {
+  equipment: string[]
+  restaurantId?: string | null
+  onToggle: (item: string) => void
+  onAdd: (item: string) => void
+}) {
+  const supabase = require('@/lib/supabase').createClient()
+  const [libItems,  setLibItems]  = useState<string[]>([])
+  const [newItem,   setNewItem]   = useState('')
+
+  useState(() => {
+    if (!restaurantId) return
+    supabase.from('service_ware_items')
+      .select('name').eq('category', 'equipment')
+      .eq('restaurant_id', restaurantId).eq('is_active', true).order('name')
+      .then(({ data }: { data: { name: string }[] | null }) => {
+        setLibItems(data?.map((d: { name: string }) => d.name) ?? [])
+      })
+  })
+
+  return (
+    <div className="mt-4">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">
+        Equipment Needed
+      </div>
+      {libItems.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {libItems.map(item => (
+            <button key={item} onClick={() => onToggle(item)}
+              className={"text-[11px] px-2.5 py-0.5 rounded-full border transition-colors " +
+                (equipment.includes(item)
+                  ? 'bg-[--accent-light] border-[--accent] text-[--accent] font-medium'
+                  : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]')}>
+              {equipment.includes(item) ? '✓ ' : ''}{item}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {equipment.filter(e => !libItems.includes(e)).map(e => (
+          <span key={e} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[--surface-2] border border-[--border] text-[--text]">
+            ⚙️ {e}
+            <button onClick={() => onToggle(e)} className="text-[--hint] hover:text-red-400">×</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        <input value={newItem} onChange={e => setNewItem(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && newItem.trim()) { onAdd(newItem); setNewItem('') } }}
+          placeholder="Add equipment…"
+          className="px-2.5 py-1 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] w-40" />
+        <button onClick={() => { if (newItem.trim()) { onAdd(newItem); setNewItem('') } }}
+          disabled={!newItem.trim()}
+          className="px-2.5 py-1 text-xs bg-[--surface-2] border border-[--border-2] rounded-lg hover:bg-[--cream-3] disabled:opacity-40">
+          +
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── TagEditor ─────────────────────────────────────────────────
 function TagEditor({ recipe, onUpdateRecipe }: { recipe: Recipe; onUpdateRecipe: (id: string, updates: Partial<Recipe>) => Promise<void> }) {
   const [newTag, setNewTag] = useState('')

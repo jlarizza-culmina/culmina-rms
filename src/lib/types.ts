@@ -169,6 +169,7 @@ export interface Recipe {
   is_component_recipe?: boolean
   // Service ware (Phase 4)
   service_ware?: ServiceWare
+  equipment_needed?: string[]
   created_at?: string
 }
 
@@ -420,4 +421,29 @@ export interface LocationWaitlistSettings {
   welcome_message: string
   confirmation_msg: string
   mta_station_id: string
+}
+
+// ── Service ware library types ────────────────────────────────
+export type ServiceWareCategory = 'plateware' | 'glassware' | 'flatware' | 'boh_utensils' | 'equipment'
+
+export interface ServiceWareItem {
+  id: string
+  restaurant_id: string
+  category: ServiceWareCategory
+  name: string
+  description: string
+  brand: string
+  is_active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ServiceWareInventory {
+  id: string
+  service_ware_item_id: string
+  location_id: string
+  quantity_on_hand: number
+  notes: string
+  updated_at?: string
+  updated_by?: string | null
 }
