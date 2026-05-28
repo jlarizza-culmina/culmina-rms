@@ -31,7 +31,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
 
       <div className="flex-1 overflow-hidden">
         {tab === 'ingredients' && (
-          <IngredientLibrary userId={userId} restaurantId={restaurantId} />
+          <IngredientLibrary userId={userId} />
         )}
         {tab === 'serviceware' && (
           <ServiceWareLibrary userId={userId} restaurantId={restaurantId} locations={locations} />
