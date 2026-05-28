@@ -11,14 +11,14 @@ interface Props {
 
 type LibTab = 'ingredients' | 'vendors' | 'plateware' | 'glassware' | 'flatware' | 'boh_utensils' | 'equipment'
 
-const TABS: { key: LibTab; label: string; icon: string }[] = [
-  { key: 'ingredients',  label: 'Ingredients',  icon: '🥬' },
-  { key: 'vendors',      label: 'Vendors',       icon: '🚚' },
-  { key: 'plateware',    label: 'Plateware',     icon: '🍽' },
-  { key: 'glassware',    label: 'Glassware',     icon: '🥂' },
-  { key: 'flatware',     label: 'Flatware',      icon: '🍴' },
-  { key: 'boh_utensils', label: 'BOH Utensils',  icon: '🔪' },
-  { key: 'equipment',    label: 'Equipment',     icon: '⚙️' },
+const TABS: { key: LibTab; label: string; icon: string; singular: string }[] = [
+  { key: 'ingredients',  label: 'Ingredients',  icon: '🥬', singular: 'Ingredient' },
+  { key: 'vendors',      label: 'Vendors',       icon: '🚚', singular: 'Vendor' },
+  { key: 'plateware',    label: 'Plateware',     icon: '🍽', singular: 'Plateware item' },
+  { key: 'glassware',    label: 'Glassware',     icon: '🥂', singular: 'Glassware item' },
+  { key: 'flatware',     label: 'Flatware',      icon: '🍴', singular: 'Flatware item' },
+  { key: 'boh_utensils', label: 'BOH Utensils',  icon: '🔪', singular: 'BOH Utensil' },
+  { key: 'equipment',    label: 'Equipment',     icon: '⚙️', singular: 'Equipment item' },
 ]
 
 const ING_CATEGORIES = ['produce','meat','seafood','dairy','bakery','pantry','spices','spirits','mixers','frozen','beverages','other']
@@ -59,6 +59,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
     if (restaurantId) q = q.eq('restaurant_id', restaurantId)
     const { data } = await q
     setSwItems(data ?? [])
+    return data ?? []
   }, [restaurantId, supabase])
 
   const loadSwInventory = useCallback(async (itemId: string) => {
@@ -75,7 +76,26 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
     setSearch(''); setFilter('all')
     if (tab === 'ingredients') loadIngredients().finally(() => setLoading(false))
     else if (tab === 'vendors') loadVendors().finally(() => setLoading(false))
-    else loadSwItems(tab as ServiceWareCategory).finally(() => setLoading(false))
+    else {
+      loadSwItems(tab as ServiceWareCategory).then(async (items) => {
+        // Bulk load inventory for all items in this tab
+        if (items && items.length > 0) {
+          const ids = items.map((i: ServiceWareItem) => i.id)
+          const { data } = await supabase
+            .from('service_ware_inventory')
+            .select('*')
+            .in('service_ware_item_id', ids)
+          const grouped: Record<string, ServiceWareInventory[]> = {}
+          items.forEach((item: ServiceWareItem) => {
+            grouped[item.id] = locations.map(loc => {
+              const existing = (data ?? []).find((r: ServiceWareInventory) => r.service_ware_item_id === item.id && r.location_id === loc.id)
+              return existing ?? { id: `new-${loc.id}`, service_ware_item_id: item.id, location_id: loc.id, quantity_on_hand: 0, notes: '' } as ServiceWareInventory
+            })
+          })
+          setSwInventory(prev => ({ ...prev, ...grouped }))
+        }
+      }).finally(() => setLoading(false))
+    }
   }, [tab])
 
   // ── Filtered rows ──────────────────────────────────────────
@@ -158,7 +178,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
         <div className="ml-auto">
           <button onClick={openAdd}
             className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] transition-colors">
-            + Add {tabLabel.slice(0,-1).replace('BOH Utensil','BOH Utensil').replace('Ingredient','Ingredient').replace(/s$/,'')}
+            + Add {TABS.find(t=>t.key===tab)?.singular}
           </button>
         </div>
       </div>
@@ -235,7 +255,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
           /* ── Service ware table ── */
           ) : (
             swFiltered.length === 0 ? (
-              <EmptyState label={tabLabel.toLowerCase().replace(/s$/,'')} onAdd={openAdd} />
+              <EmptyState label={TABS.find(t=>t.key===tab)?.singular?.toLowerCase() ?? tab} onAdd={openAdd} />
             ) : (
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-white border-b border-[--border] z-10">
@@ -430,9 +450,8 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
     onSaved()
   }
 
-  const title = editingId
-    ? `Edit ${TABS.find(t=>t.key===tab)?.label.slice(0,-1)}`
-    : `Add ${TABS.find(t=>t.key===tab)?.label.slice(0,-1).replace('BOH Utensil','BOH Utensil')}`
+  const singular = TABS.find(t=>t.key===tab)?.singular ?? ''
+  const title = editingId ? `Edit ${singular}` : `Add ${singular}`
 
   const itemInventory = swInventory[editingId ?? ''] ?? locations.map(loc => ({
     id: `new-${loc.id}`, service_ware_item_id: '', location_id: loc.id, quantity_on_hand: 0, notes: '',
