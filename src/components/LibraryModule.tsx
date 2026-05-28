@@ -375,9 +375,7 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
   const [venNotes,     setVenNotes]     = useState(existingVen?.notes ?? '')
   // Service ware form
   const [swBrand,      setSwBrand]      = useState(existingSw?.brand ?? '')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [swSize,       setSwSize]       = useState((existingSw as any)?.size ?? '')
-  const [swSize,       setSwSize]       = useState((existingSw as Record<string,string> | null)?.["size"] ?? '')
+  const [swSize,       setSwSize]       = useState((existingSw as Record<string, string> | null)?.size ?? '')
   const [swDesc,       setSwDesc]       = useState(existingSw?.description ?? '')
 
   async function handleSave() {
