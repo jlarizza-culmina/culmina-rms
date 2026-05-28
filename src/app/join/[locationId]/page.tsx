@@ -150,7 +150,7 @@ export default function JoinPage() {
   )
 
   return (
-    <div style={{ minHeight:'100vh', background:'#F8F5F0', fontFamily:'system-ui,sans-serif' }}>
+    <div style={{ minHeight:'100vh', background:'#F8F5F0', fontFamily:'system-ui,sans-serif', overflowY:'auto' }}>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0}
         input,select,textarea{font-family:inherit}
@@ -162,7 +162,7 @@ export default function JoinPage() {
         .fade{animation:fadeUp .4s ease both}
       `}</style>
 
-      <div style={{ maxWidth:460, margin:'0 auto', padding:'0 20px 40px' }}>
+      <div style={{ maxWidth:460, margin:'0 auto', padding:'0 20px 40px', boxSizing:'border-box', width:'100%' }}>
 
         {/* Header */}
         <div style={{ textAlign:'center', padding:'40px 0 28px' }}>

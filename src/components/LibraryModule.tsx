@@ -260,7 +260,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-white border-b border-[--border] z-10">
                   <tr>
-                    {['Name','Brand','Description', locations.length > 1 ? 'Total QOH' : 'QOH',''].map(h => (
+                    {['Name','Brand','Size', locations.length > 1 ? 'Total QOH' : 'QOH',''].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide first:pl-6">{h}</th>
                     ))}
                   </tr>
@@ -271,7 +271,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
                       className={`border-b border-[--border] cursor-pointer hover:bg-[--accent-light]/20 ${idx%2===0?'bg-white':'bg-[--surface-2]/30'}`}>
                       <td className="px-4 py-2.5 pl-6 font-medium text-[--text]">{item.name}</td>
                       <td className="px-4 py-2.5 text-[--muted]">{item.brand || '—'}</td>
-                      <td className="px-4 py-2.5 text-[--muted] max-w-xs truncate">{item.description || '—'}</td>
+                      <td className="px-4 py-2.5 text-[--muted]">{(item as Record<string,string>).size || item.description || '—'}</td>
                       <td className="px-4 py-2.5 text-[--text] font-medium">{getSwQoh(item)}</td>
                       <td className="px-3 py-2.5 text-[--hint] text-right">›</td>
                     </tr>
@@ -375,6 +375,9 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
   const [venNotes,     setVenNotes]     = useState(existingVen?.notes ?? '')
   // Service ware form
   const [swBrand,      setSwBrand]      = useState(existingSw?.brand ?? '')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [swSize,       setSwSize]       = useState((existingSw as any)?.size ?? '')
+  const [swSize,       setSwSize]       = useState((existingSw as Record<string,string> | null)?.["size"] ?? '')
   const [swDesc,       setSwDesc]       = useState(existingSw?.description ?? '')
 
   async function handleSave() {
@@ -406,7 +409,10 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
         // Service ware
         const payload = {
           restaurant_id: restaurantId, category: tab as ServiceWareCategory,
-          name: name.trim(), brand: swBrand, description: swDesc, is_active: true,
+          name: name.trim(), brand: swBrand, description: swDesc,
+          // size stored in description prefix for now until schema update
+          ...(swSize ? { size: swSize } : {}),
+          is_active: true,
         }
         let itemId = editingId
         if (editingId) {
@@ -514,8 +520,10 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
 
           {isSwTab && (<>
             <div className="grid grid-cols-2 gap-3">
+              <Row label="Name"><span className="text-[10px] text-[--hint]">Already filled above</span></Row>
               <Row label="Brand"><input value={swBrand} onChange={e => setSwBrand(e.target.value)} className="input" placeholder="Manufacturer or brand" /></Row>
-              <Row label="Description"><input value={swDesc} onChange={e => setSwDesc(e.target.value)} className="input" placeholder="Size, material, specs…" /></Row>
+              <Row label="Size / Dimensions"><input value={swSize} onChange={e => setSwSize(e.target.value)} className="input" placeholder="e.g. 10oz, 12-inch, 7mm" /></Row>
+              <Row label="Description / Notes"><input value={swDesc} onChange={e => setSwDesc(e.target.value)} className="input" placeholder="Material, specs, usage notes…" /></Row>
             </div>
             {/* QOH table */}
             <div>
