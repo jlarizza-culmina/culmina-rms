@@ -63,7 +63,9 @@ export default function RecipeListPage({
   const [sortDir,     setSortDir]     = useState<'asc' | 'desc'>('desc')
   const [filterStage, setFilterStage] = useState<RecipeStage | 'all'>('all')
   const [filterStatus,setFilterStatus]= useState<MenuItemStatus | 'all'>('all')
-  const [filterSeason,setFilterSeason]= useState<string | 'all'>('all')
+  const [filterSeason,    setFilterSeason]    = useState<string | 'all'>('all')
+  const [filterSection,   setFilterSection]   = useState<string | 'all'>('all')
+  const [filterTag,       setFilterTag]       = useState<string | 'all'>('all')
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -80,7 +82,9 @@ export default function RecipeListPage({
     if (search)        r = r.filter(x => x.name.toLowerCase().includes(search.toLowerCase()))
     if (filterStage !== 'all')  r = r.filter(x => (x.recipe_stage ?? 'development') === filterStage)
     if (filterStatus !== 'all') r = r.filter(x => (x.menu_status ?? 'not_on_menu') === filterStatus)
-    if (filterSeason !== 'all') r = r.filter(x => (x.seasons ?? []).includes(filterSeason))
+    if (filterSeason !== 'all')  r = r.filter(x => (x.seasons ?? []).includes(filterSeason))
+    if (filterSection !== 'all') r = r.filter(x => (x.menu_sections ?? []).includes(filterSection))
+    if (filterTag !== 'all')     r = r.filter(x => (x.tags ?? []).includes(filterTag))
     return sortRecipes(r, sortKey, sortDir)
   }, [typeFiltered, search, filterStage, filterStatus, filterSeason, sortKey, sortDir])
 
@@ -161,6 +165,36 @@ export default function RecipeListPage({
                 <button key={s} onClick={() => setFilterStatus(s)}
                   className={`text-[11px] px-2 py-0.5 rounded-full border capitalize transition-colors ${filterStatus === s ? 'bg-[--accent] text-white border-[--accent]' : 'border-[--border-2] text-[--muted] hover:bg-white'}`}>
                   {s === 'all' ? 'All' : STATUS_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Menu Section</div>
+            <div className="flex gap-1 flex-wrap">
+              <button onClick={() => setFilterSection('all')}
+                className={"text-[11px] px-2 py-0.5 rounded-full border transition-colors " + (filterSection === 'all' ? 'bg-[--accent] text-white border-[--accent]' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
+                All
+              </button>
+              {Array.from(new Set(recipes.flatMap(r => r.menu_sections ?? []))).sort().map(s => (
+                <button key={s} onClick={() => setFilterSection(filterSection === s ? 'all' : s)}
+                  className={"text-[11px] px-2 py-0.5 rounded-full border capitalize transition-colors " + (filterSection === s ? 'bg-[--accent-light] text-[--accent] border-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
+                  {s.replace('_',' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Tags</div>
+            <div className="flex gap-1 flex-wrap">
+              <button onClick={() => setFilterTag('all')}
+                className={"text-[11px] px-2 py-0.5 rounded-full border transition-colors " + (filterTag === 'all' ? 'bg-[--accent] text-white border-[--accent]' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
+                All
+              </button>
+              {Array.from(new Set(recipes.flatMap(r => r.tags ?? []))).sort().map(t => (
+                <button key={t} onClick={() => setFilterTag(filterTag === t ? 'all' : t)}
+                  className={"text-[11px] px-2 py-0.5 rounded-full border transition-colors " + (filterTag === t ? 'bg-[--accent-light] text-[--accent] border-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
+                  {t}
                 </button>
               ))}
             </div>
@@ -270,6 +304,13 @@ export default function RecipeListPage({
                         </div>
                       )}
                       {r.is_special && <span className="text-[10px] text-amber-600">⭐ Special</span>}
+                      {(r.menu_sections ?? []).length > 0 && (
+                        <div className="flex gap-1 mt-0.5 flex-wrap">
+                          {(r.menu_sections ?? []).map(s => (
+                            <span key={s} className="text-[9px] bg-[--accent-light] text-[--accent] px-1.5 py-0.5 rounded-full capitalize">{s.replace('_',' ')}</span>
+                          ))}
+                        </div>
+                      )}
                       {r.tags?.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {r.tags.slice(0,3).map(t => (

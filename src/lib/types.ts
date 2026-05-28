@@ -167,6 +167,7 @@ export interface Recipe {
   menu_description?: string
   internal_notes?: string
   is_component_recipe?: boolean
+  menu_sections?: string[]
   // Service ware (Phase 4)
   service_ware?: ServiceWare
   equipment_needed?: string[]

@@ -144,6 +144,36 @@ export default function RecipeView({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // ── Library service ware (load from DB) ─────────────────────
+  const [libVessels,    setLibVessels]    = useState<string[]>([])
+  const [libFlatware,   setLibFlatware]   = useState<string[]>([])
+  const [libGlasses,    setLibGlasses]    = useState<string[]>([])
+  const [libBohUtensils,setLibBohUtensils]= useState<string[]>([])
+  const [libEquipment,  setLibEquipment]  = useState<string[]>([])
+  const [menuSectionOpts,setMenuSectionOpts]= useState<{value:string;label:string}[]>([])
+
+  // Load service ware from library on mount
+  const supabaseClient = require('@/lib/supabase').createClient()
+  useState(() => {
+    const rid = recipe.restaurant_id
+    if (!rid) return
+    const cats = [
+      ['plateware',    setLibVessels],
+      ['flatware',     setLibFlatware],
+      ['glassware',    setLibGlasses],
+      ['boh_utensils', setLibBohUtensils],
+      ['equipment',    setLibEquipment],
+    ] as const
+    cats.forEach(([cat, setter]) => {
+      supabaseClient.from('service_ware_items').select('name').eq('category', cat)
+        .or().eq('is_active', true).order('name')
+        .then(({ data }: { data: {name:string}[]|null }) => setter(data?.map(d => d.name) ?? []))
+    })
+    supabaseClient.from('picklist_values').select('value,label').eq('list_name','menu_section')
+      .eq('is_active', true).order('sort_order')
+      .then(({ data }: { data: {value:string;label:string}[]|null }) => setMenuSectionOpts(data ?? []))
+  })
+
   // ── Phase 2 handlers ─────────────────────────────────────
   async function setStage(stage: RecipeStage) {
     await onUpdateRecipe(recipe.id, { recipe_stage: stage })
@@ -310,9 +340,7 @@ export default function RecipeView({
             <button onClick={onDelete} className="text-[--hint] hover:text-red-500 text-sm px-1.5 transition-colors" title="Delete">✕</button>
           </div>
         </div>
-        {recipe.description && (
-          <p className="text-xs text-[--muted] italic mb-2 leading-relaxed">{recipe.description}</p>
-        )}
+
         <div className="flex gap-3 flex-wrap mb-2 text-xs text-[--muted]">
           {recipe.prep_time > 0 && <span>🕐 Prep: {recipe.prep_time}min</span>}
           {recipe.cook_time > 0 && <span>{isCocktail ? '🧊' : '🔥'} {isCocktail ? 'Build' : 'Cook'}: {recipe.cook_time}min</span>}
@@ -563,7 +591,7 @@ export default function RecipeView({
             {/* ── Equipment needed ── */}
             <EquipmentSection
               equipment={recipe.equipment_needed ?? []}
-              restaurantId={recipe.restaurant_id}
+              libItems={libEquipment}
               onToggle={toggleEquipment}
               onAdd={addEquipment}
             />
@@ -576,12 +604,14 @@ export default function RecipeView({
               {isCocktail ? (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-[10px] font-medium text-[--muted] mb-1">Glassware</label>
+                    <label className="block text-[10px] font-medium text-[--muted] mb-1">
+                      Glassware {libGlasses.length > 0 ? <span className="font-normal text-[--hint]">— from library</span> : <span className="font-normal text-[--hint]">— add glassware to library</span>}
+                    </label>
                     <select defaultValue={sw.glass ?? ''}
                       onChange={e => updateSW({ glass: e.target.value })}
-                      className="w-48 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
+                      className="w-56 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
                       <option value="">— Select glass —</option>
-                      {GLASSES.map(g => <option key={g} value={g}>{g}</option>)}
+                      {(libGlasses.length > 0 ? libGlasses : GLASSES).map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
                   </div>
                   <div>
@@ -619,12 +649,14 @@ export default function RecipeView({
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-[10px] font-medium text-[--muted] mb-1">Primary Vessel</label>
+                    <label className="block text-[10px] font-medium text-[--muted] mb-1">
+                      Primary Vessel {libVessels.length > 0 ? <span className="font-normal text-[--hint]">— from library</span> : <span className="font-normal text-[--hint]">— add plateware to library</span>}
+                    </label>
                     <select defaultValue={sw.vessel ?? ''}
                       onChange={e => updateSW({ vessel: e.target.value })}
-                      className="w-48 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
+                      className="w-56 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
                       <option value="">— Select vessel —</option>
-                      {VESSELS.map(v => <option key={v} value={v}>{v}</option>)}
+                      {(libVessels.length > 0 ? libVessels : VESSELS).map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
@@ -723,26 +755,14 @@ export default function RecipeView({
 // ── Overview ──────────────────────────────────────────────────────────────────
 // ── EquipmentSection ─────────────────────────────────────────
 function EquipmentSection({
-  equipment, restaurantId, onToggle, onAdd
+  equipment, libItems, onToggle, onAdd
 }: {
   equipment: string[]
-  restaurantId?: string | null
+  libItems: string[]
   onToggle: (item: string) => void
   onAdd: (item: string) => void
 }) {
-  const supabase = require('@/lib/supabase').createClient()
-  const [libItems,  setLibItems]  = useState<string[]>([])
-  const [newItem,   setNewItem]   = useState('')
-
-  useState(() => {
-    if (!restaurantId) return
-    supabase.from('service_ware_items')
-      .select('name').eq('category', 'equipment')
-      .eq('restaurant_id', restaurantId).eq('is_active', true).order('name')
-      .then(({ data }: { data: { name: string }[] | null }) => {
-        setLibItems(data?.map((d: { name: string }) => d.name) ?? [])
-      })
-  })
+  const [newItem, setNewItem] = useState('')
 
   return (
     <div className="mt-4">

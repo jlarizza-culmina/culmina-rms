@@ -56,7 +56,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
 
   const loadSwItems = useCallback(async (cat: ServiceWareCategory) => {
     let q = supabase.from('service_ware_items').select('*').eq('category', cat).eq('is_active', true).order('name')
-    if (restaurantId) q = q.eq('restaurant_id', restaurantId)
+    if (restaurantId) q = q.or(`restaurant_id.eq.${restaurantId},restaurant_id.is.null`)
     const { data } = await q
     setSwItems(data ?? [])
     return data ?? []
