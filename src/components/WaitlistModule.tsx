@@ -249,7 +249,7 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
                             ✓ Seated
                           </button>
                           <button onClick={() => doAction(s.id, 'no_show')} disabled={!!isActing}
-                            className="px-3 py-1.5 text-xs text-[--hint] border border-[--border-2] rounded-lg hover:text-red-500 hover:border-red-300 disabled:opacity-50 transition-colors">
+                            className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 transition-colors">
                             No-show
                           </button>
                         </div>

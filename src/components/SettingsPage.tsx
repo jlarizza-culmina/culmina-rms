@@ -11,7 +11,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -70,6 +70,14 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
   const [editingLocId, setEditingLocId] = useState<string | null>(null)
   const [locDraft,     setLocDraft]     = useState<Partial<Location>>({})
 
+  // ── Queue settings
+  const [queueLocId,   setQueueLocId]   = useState(ctx.locations[0]?.id ?? '')
+  const [tosText,      setTosText]      = useState('')
+  const [tosUrl,       setTosUrl]       = useState('')
+  const [walkMins,     setWalkMins]     = useState(2)
+  const [maxParty,     setMaxParty]     = useState(10)
+  const [queueLoaded,  setQueueLoaded]  = useState(false)
+
   // ── Picklists ─────────────────────────────────────────────────
   const [listName,  setListName]  = useState('ingredient_unit')
   const [picklists, setPicklists] = useState<PicklistValue[]>([])
@@ -81,6 +89,18 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
   )
 
   useEffect(() => { if (tab === 'picklists') loadPicklists() }, [tab, listName])
+  useEffect(() => {
+    if (tab === 'queue' && queueLocId && !queueLoaded) {
+      supabase.from('location_waitlist_settings').select('*').eq('location_id', queueLocId).single()
+        .then(({ data }) => {
+          if (data) {
+            setTosText(data.tos_text ?? ''); setTosUrl(data.tos_url ?? '')
+            setWalkMins(data.walk_time_minutes ?? 2); setMaxParty(data.max_party_size ?? 10)
+          }
+          setQueueLoaded(true)
+        })
+    }
+  }, [tab, queueLocId])
 
   async function loadPicklists() {
     const { data } = await supabase.from('picklist_values').select('*')
@@ -91,6 +111,15 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
   }
 
   function flash(msg: string) { setSaved(msg); setTimeout(() => setSaved(''), 2500) }
+
+  async function saveQueueSettings() {
+    setSaving(true)
+    await supabase.from('location_waitlist_settings').upsert({
+      location_id: queueLocId, tos_text: tosText, tos_url: tosUrl,
+      walk_time_minutes: walkMins, max_party_size: maxParty,
+    }, { onConflict: 'location_id' })
+    setSaving(false); flash('Queue settings saved')
+  }
 
   async function saveGeneral() {
     setSaving(true)
@@ -190,8 +219,9 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
   const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'general',      label: 'General' },
     { key: 'locations',    label: 'Locations' },
-    { key: 'picklists',    label: 'Picklists' },
     { key: 'branding',     label: 'Branding' },
+    { key: 'queue',        label: 'Queue' },
+    { key: 'picklists',    label: 'Picklists' },
     { key: 'entitlements', label: 'Entitlements' },
     { key: 'team',         label: 'Team' },
   ]
@@ -508,6 +538,46 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
                 className="text-xs text-[--muted] underline hover:text-[--text] mr-4">Reset to defaults</button>
               <SaveBtn onClick={saveEntitlements} saving={saving} label="Save Entitlements" />
             </div>
+          </div>
+        )}
+
+        {/* ── Queue ── */}
+        {tab === 'queue' && (
+          <div className="space-y-5">
+            <p className="text-xs text-[--muted]">Settings for the guest-facing waitlist form at each location.</p>
+            {ctx.locations.length > 1 && (
+              <Field label="Location">
+                <select value={queueLocId} onChange={e => { setQueueLocId(e.target.value); setQueueLoaded(false) }} className="input bg-white">
+                  {ctx.locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </Field>
+            )}
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Walk time from station (minutes)">
+                <input type="number" min="1" max="30" value={walkMins}
+                  onChange={e => setWalkMins(parseInt(e.target.value) || 2)} className="input" />
+                <p className="text-[10px] text-[--hint] mt-1">Used for MTA smart notification timing (Phase 9B-2)</p>
+              </Field>
+              <Field label="Max party size">
+                <input type="number" min="1" max="50" value={maxParty}
+                  onChange={e => setMaxParty(parseInt(e.target.value) || 10)} className="input" />
+              </Field>
+            </div>
+            <Field label="Terms of Service URL">
+              <input value={tosUrl} onChange={e => setTosUrl(e.target.value)}
+                placeholder="https://yoursite.com/waitlist-tos  (leave blank to show text inline)"
+                className="input" />
+            </Field>
+            <div>
+              <label className="block text-[11px] font-medium text-[--muted] mb-1.5">
+                Terms of Service text
+                <span className="ml-2 font-normal text-[--hint]">— HTML or plain text. Shown inline on the join form. Leave blank to hide the ToS checkbox.</span>
+              </label>
+              <textarea value={tosText} onChange={e => setTosText(e.target.value)}
+                rows={8} placeholder="By joining this waitlist, you agree to receive SMS messages from us. Message and data rates may apply..."
+                className="w-full px-3 py-2 text-xs border border-[--border-2] rounded-xl outline-none focus:border-[--accent] resize-y font-mono" />
+            </div>
+            <SaveBtn onClick={saveQueueSettings} saving={saving} label="Save Queue Settings" />
           </div>
         )}
 
