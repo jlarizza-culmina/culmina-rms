@@ -7,7 +7,7 @@ export type DishMode        = 'single' | 'composed'
 export type UserRole        = 'super_admin' | 'admin' | 'chef' | 'manager' | 'foh'
 export type MenuItemStatus  = 'not_on_menu' | 'orderable' | 'on_menu' | 'special'
 export type RecipeStage     = 'development' | 'testing' | 'active' | 'specials_candidate' | 'retired'
-export type AppModule       = 'home' | 'recipes' | 'menus' | 'library' | 'production' | 'schedule' | 'analytics' | 'settings' | 'superadmin'
+export type AppModule       = 'home' | 'recipes' | 'menus' | 'library' | 'production' | 'schedule' | 'analytics' | 'settings' | 'superadmin' | 'queue'
 
 // ── Multi-tenant types ────────────────────────────────────────
 export interface AppUser {
