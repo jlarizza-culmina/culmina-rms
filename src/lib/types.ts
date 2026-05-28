@@ -433,6 +433,7 @@ export interface ServiceWareItem {
   name: string
   description: string
   brand: string
+  size?: string
   is_active: boolean
   created_at?: string
   updated_at?: string

@@ -271,7 +271,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
                       className={`border-b border-[--border] cursor-pointer hover:bg-[--accent-light]/20 ${idx%2===0?'bg-white':'bg-[--surface-2]/30'}`}>
                       <td className="px-4 py-2.5 pl-6 font-medium text-[--text]">{item.name}</td>
                       <td className="px-4 py-2.5 text-[--muted]">{item.brand || '—'}</td>
-                      <td className="px-4 py-2.5 text-[--muted]">{(item as Record<string,string>).size || item.description || '—'}</td>
+                      <td className="px-4 py-2.5 text-[--muted]">{item.size || item.description || '—'}</td>
                       <td className="px-4 py-2.5 text-[--text] font-medium">{getSwQoh(item)}</td>
                       <td className="px-3 py-2.5 text-[--hint] text-right">›</td>
                     </tr>
@@ -375,7 +375,7 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
   const [venNotes,     setVenNotes]     = useState(existingVen?.notes ?? '')
   // Service ware form
   const [swBrand,      setSwBrand]      = useState(existingSw?.brand ?? '')
-  const [swSize,       setSwSize]       = useState((existingSw as Record<string, string> | null)?.size ?? '')
+  const [swSize,       setSwSize]       = useState(existingSw?.size ?? '')
   const [swDesc,       setSwDesc]       = useState(existingSw?.description ?? '')
 
   async function handleSave() {
@@ -409,7 +409,7 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
           restaurant_id: restaurantId, category: tab as ServiceWareCategory,
           name: name.trim(), brand: swBrand, description: swDesc,
           // size stored in description prefix for now until schema update
-          ...(swSize ? { size: swSize } : {}),
+          size: swSize,
           is_active: true,
         }
         let itemId = editingId
