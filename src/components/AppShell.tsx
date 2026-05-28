@@ -6,7 +6,7 @@ import type { AppUser, Restaurant, Location, RestaurantMember, AppModule, UserRo
 import OnboardingWizard from './OnboardingWizard'
 import ModuleLauncher from './ModuleLauncher'
 import RecipeApp from './RecipeApp'
-import IngredientLibrary from './IngredientLibrary'
+import LibraryModule from './LibraryModule'
 import ProductionPlanner from './ProductionPlanner'
 import TMinusSchedule from './TMinusSchedule'
 import AnalyticsModule from './AnalyticsModule'
@@ -304,18 +304,12 @@ export default function AppShell({ user }: Props) {
   }
 
   if (module === 'library') {
-    // Library needs vendors + library data — pass userId for now (legacy compat)
     return (
       <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
         <TopBar />
-        <div className="flex-1 overflow-hidden flex flex-col">
-          <IngredientLibrary
-            userId={user.id}
-            vendors={[]}
-            library={[]}
-            onLibraryChange={() => {}}
-            onVendorsChange={() => {}}
-          />
+        <div className="flex-1 overflow-hidden">
+          <LibraryModule userId={user.id} restaurantId={restaurant.id} locations={locations} />
         </div>
       </div>
     )
