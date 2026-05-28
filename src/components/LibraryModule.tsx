@@ -45,7 +45,10 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
 
   // ── Load data ─────────────────────────────────────────────
   const loadIngredients = useCallback(async () => {
-    const { data } = await supabase.from('ingredient_library').select('*').eq('user_id', userId).eq('is_active', true).order('name')
+    // Load user-specific items AND global seed items (user_id IS NULL)
+    const { data } = await supabase.from('ingredient_library').select('*')
+      .or(`user_id.eq.${userId},user_id.is.null`)
+      .eq('is_active', true).order('name')
     setIngredients(data ?? [])
   }, [userId, supabase])
 
