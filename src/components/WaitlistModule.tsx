@@ -204,7 +204,7 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
               <div className="space-y-2">
                 {sessions.map((s, i) => {
                   const style = STATUS_STYLES[s.status]
-                  const isActing = acting?.startsWith(s.id)
+                  const isActing = acting !== null && acting?.startsWith(s.id)
                   return (
                     <div key={s.id} className={`bg-white rounded-xl border border-[--border] p-4 transition-opacity ${style.row}`}>
                       <div className="flex items-start justify-between gap-3">
@@ -235,7 +235,7 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
                           {s.status === 'waiting' && (
                             <button onClick={() => doAction(s.id, 'notify')} disabled={!!isActing}
                               className="flex-1 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50 transition-colors">
-                              {isActing === s.id + 'notify' ? 'Texting…' : '📱 Notify'}
+                              {acting === s.id + 'notify' ? 'Texting…' : '📱 Notify'}
                             </button>
                           )}
                           {s.status === 'notified' && (
