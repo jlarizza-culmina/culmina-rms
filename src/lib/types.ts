@@ -425,7 +425,7 @@ export interface LocationWaitlistSettings {
 }
 
 // ── Service ware library types ────────────────────────────────
-export type ServiceWareCategory = 'plateware' | 'glassware' | 'flatware' | 'boh_utensils' | 'equipment'
+export type ServiceWareCategory = 'Plateware' | 'Glassware' | 'Flatware' | 'Cookware' | 'Bakeware' | 'Barware' | 'Kitchen Utensils' | 'Cooking Equipment'
 
 export interface ServiceWareItem {
   id: string

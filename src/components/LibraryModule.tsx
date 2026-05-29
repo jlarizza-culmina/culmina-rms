@@ -9,20 +9,23 @@ interface Props {
   locations: Location[]
 }
 
-type LibTab = 'ingredients' | 'vendors' | 'plateware' | 'glassware' | 'flatware' | 'boh_utensils' | 'equipment'
+type LibTab = 'ingredients' | 'vendors' | 'Plateware' | 'Glassware' | 'Flatware' | 'Barware' | 'Cookware' | 'Bakeware' | 'Kitchen Utensils' | 'Cooking Equipment'
 
 const TABS: { key: LibTab; label: string; icon: string; singular: string }[] = [
-  { key: 'ingredients',  label: 'Ingredients',  icon: '🥬', singular: 'Ingredient' },
-  { key: 'vendors',      label: 'Vendors',       icon: '🚚', singular: 'Vendor' },
-  { key: 'plateware',    label: 'Plateware',     icon: '🍽', singular: 'Plateware item' },
-  { key: 'glassware',    label: 'Glassware',     icon: '🥂', singular: 'Glassware item' },
-  { key: 'flatware',     label: 'Flatware',      icon: '🍴', singular: 'Flatware item' },
-  { key: 'boh_utensils', label: 'BOH Utensils',  icon: '🔪', singular: 'BOH Utensil' },
-  { key: 'equipment',    label: 'Equipment',     icon: '⚙️', singular: 'Equipment item' },
+  { key: 'ingredients',       label: 'Ingredients',       icon: '🥬', singular: 'Ingredient' },
+  { key: 'vendors',           label: 'Vendors',           icon: '🚚', singular: 'Vendor' },
+  { key: 'Plateware',         label: 'Plateware',         icon: '🍽', singular: 'Plateware item' },
+  { key: 'Glassware',         label: 'Glassware',         icon: '🥂', singular: 'Glassware item' },
+  { key: 'Flatware',          label: 'Flatware',          icon: '🍴', singular: 'Flatware item' },
+  { key: 'Barware',           label: 'Barware',           icon: '🍸', singular: 'Barware item' },
+  { key: 'Cookware',          label: 'Cookware',          icon: '🍳', singular: 'Cookware item' },
+  { key: 'Bakeware',          label: 'Bakeware',          icon: '🥘', singular: 'Bakeware item' },
+  { key: 'Kitchen Utensils',  label: 'Kitchen Utensils',  icon: '🔪', singular: 'Kitchen Utensil' },
+  { key: 'Cooking Equipment', label: 'Cooking Equipment', icon: '⚙️', singular: 'Equipment item' },
 ]
 
 const ING_CATEGORIES = ['produce','meat','seafood','dairy','bakery','pantry','spices','spirits','mixers','frozen','beverages','other']
-const SW_CATEGORIES: LibTab[] = ['plateware','glassware','flatware','boh_utensils','equipment']
+const SW_CATEGORIES: LibTab[] = ['Plateware','Glassware','Flatware','Barware','Cookware','Bakeware','Kitchen Utensils','Cooking Equipment']
 
 const fmt$ = (n: number | null) => n != null ? `$${n.toFixed(2)}` : '—'
 

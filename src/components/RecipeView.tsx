@@ -158,11 +158,11 @@ export default function RecipeView({
   useEffect(() => {
     const rid = recipe.restaurant_id
     const cats: [string, React.Dispatch<React.SetStateAction<string[]>>][] = [
-      ['plateware',    setLibVessels],
-      ['flatware',     setLibFlatware],
-      ['glassware',    setLibGlasses],
-      ['boh_utensils', setLibBohUtensils],
-      ['equipment',    setLibEquipment],
+      ['Plateware',         setLibVessels],
+      ['Flatware',          setLibFlatware],
+      ['Glassware',         setLibGlasses],
+      ['Kitchen Utensils',  setLibBohUtensils],
+      ['Cooking Equipment', setLibEquipment],
     ]
     cats.forEach(([cat, setter]) => {
       let q = supabase.from('service_ware_items').select('name').eq('category', cat).eq('is_active', true).order('name')
