@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { LibraryIngredient, Vendor } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 
@@ -30,7 +30,7 @@ interface Props {
 
 // ── Blank states ─────────────────────────────────────────────
 const blankIngredient = (): Partial<LibraryIngredient> => ({
-  name: '', category: 'pantry', vendor_id: null,
+  name: '', category: 'pantry', sub_category: '', vendor_id: null,
   purchase_unit: '', purchase_unit_cost: null, purchase_unit_size: null,
   recipe_unit: '', recipe_unit_is_metric: false,
   unit_conversion: 1, trim_factor: 1,
@@ -57,6 +57,14 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
   const [editVend, setEditVend]   = useState<Partial<Vendor> | null>(null)
   const [savingVend, setSavingVend] = useState(false)
 
+  // ── Recipe unit picklist ─────────────────────────────────────
+  const [recipeUnits, setRecipeUnits] = useState<{value:string;label:string}[]>([])
+  useEffect(() => {
+    createClient().from('picklist_values').select('value,label')
+      .eq('list_name','recipe_unit').eq('is_active',true).order('sort_order')
+      .then(({ data }) => setRecipeUnits(data ?? []))
+  }, [])
+
   // ── Filtered ingredients ──────────────────────────────────────
   const filtered = useMemo(() => library.filter(i => {
     const matchSearch = !ingSearch || i.name.toLowerCase().includes(ingSearch.toLowerCase())
@@ -73,6 +81,7 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
       user_id: userId,
       name: editIng.name!.trim(),
       category: editIng.category || 'other',
+      sub_category: (editIng as any).sub_category || null,
       vendor_id: editIng.vendor_id || null,
       purchase_unit: editIng.purchase_unit || '',
       purchase_unit_cost: editIng.purchase_unit_cost ?? null,
@@ -303,6 +312,11 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
               </select>
             </div>
 
+            <div>
+              <Label>Sub-category</Label>
+              <input value={(editIng as any).sub_category || ''} onChange={e => setEditIng(p => ({ ...p!, sub_category: e.target.value } as any))}
+                className="fi w-full" placeholder="e.g. Beef, Shellfish, Syrups…" />
+            </div>
             <div className="col-span-2 border-t border-[--border] pt-3 mt-1">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Purchase Info</div>
             </div>
@@ -323,8 +337,16 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
             </div>
             <div>
               <Label>Recipe unit</Label>
-              <input value={editIng.recipe_unit || ''} onChange={e => setEditIng(p => ({ ...p!, recipe_unit: e.target.value }))}
-                placeholder="g, oz, cup, each, tsp" className="fi w-full" />
+              {recipeUnits.length > 0 ? (
+                <select value={editIng.recipe_unit || ''} onChange={e => setEditIng(p => ({ ...p!, recipe_unit: e.target.value }))}
+                  className="fi w-full bg-white">
+                  <option value="">— Select unit —</option>
+                  {recipeUnits.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                </select>
+              ) : (
+                <input value={editIng.recipe_unit || ''} onChange={e => setEditIng(p => ({ ...p!, recipe_unit: e.target.value }))}
+                  placeholder="g, oz, cup, each, tsp" className="fi w-full" />
+              )}
             </div>
             <div>
               <Label>

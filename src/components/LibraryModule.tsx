@@ -80,6 +80,8 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
   useEffect(() => {
     setLoading(true)
     setSearch(''); setFilter('all')
+    // Always load vendors (needed for ingredient form dropdown regardless of active tab)
+    loadVendors()
     if (tab === 'ingredients') loadIngredients().finally(() => setLoading(false))
     else if (tab === 'vendors') loadVendors().finally(() => setLoading(false))
     else {
@@ -372,6 +374,9 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
   const [conversion,   setConversion]   = useState(String(existing?.unit_conversion ?? 1))
   const [trimFactor,   setTrimFactor]   = useState(String(existing?.trim_factor ?? 1))
   const [ingNotes,     setIngNotes]     = useState(existing?.notes ?? '')
+  const [subCategory,  setSubCategory]  = useState((existing as any)?.sub_category ?? '')
+  const [allergens,    setAllergens]    = useState<string[]>((existing as any)?.allergens ?? [])
+  const [recipeUnits,  setRecipeUnits]  = useState<{value:string;label:string}[]>([])
   // Vendor form
   const [venContact,   setVenContact]   = useState(existingVen?.contact_name ?? '')
   const [venPhone,     setVenPhone]     = useState(existingVen?.phone ?? '')
@@ -383,6 +388,13 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
   const [swBrand,      setSwBrand]      = useState(existingSw?.brand ?? '')
   const [swSize,       setSwSize]       = useState(existingSw?.size ?? '')
   const [swDesc,       setSwDesc]       = useState(existingSw?.description ?? '')
+
+  // Load recipe_unit picklist
+  useEffect(() => {
+    createClient().from('picklist_values').select('value,label')
+      .eq('list_name','recipe_unit').eq('is_active',true).order('sort_order')
+      .then(({ data }) => setRecipeUnits(data ?? []))
+  }, [])
 
   async function handleSave() {
     if (!name.trim()) return
@@ -396,6 +408,7 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
           purchase_unit_size: purchSize ? parseFloat(purchSize) : null,
           recipe_unit: recipeUnit, unit_conversion: parseFloat(conversion) || 1,
           trim_factor: parseFloat(trimFactor) || 1, notes: ingNotes, is_active: true,
+          sub_category: subCategory || null, allergens: allergens,
         }
         if (editingId) await supabase.from('ingredient_library').update(payload).eq('id', editingId)
         else await supabase.from('ingredient_library').insert(payload)
@@ -500,15 +513,67 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </Row>
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="Purchase unit"><input value={purchUnit} onChange={e => setPurchUnit(e.target.value)} className="input" placeholder="e.g. case, kg, each" /></Row>
-              <Row label="Unit cost ($)"><input type="number" value={purchCost} onChange={e => setPurchCost(e.target.value)} className="input" placeholder="0.00" /></Row>
-              <Row label="Purchase size"><input type="number" value={purchSize} onChange={e => setPurchSize(e.target.value)} className="input" placeholder="e.g. 12 (units per case)" /></Row>
-              <Row label="Recipe unit"><input value={recipeUnit} onChange={e => setRecipeUnit(e.target.value)} className="input" placeholder="e.g. cup, g, oz" /></Row>
-              <Row label="Unit conversion"><input type="number" value={conversion} onChange={e => setConversion(e.target.value)} className="input" /></Row>
-              <Row label="Trim factor (0–1)"><input type="number" value={trimFactor} onChange={e => setTrimFactor(e.target.value)} step="0.01" min="0" max="1" className="input" /></Row>
+            {/* Sub-category */}
+            <Row label="Sub-category">
+              <input value={subCategory} onChange={e => setSubCategory(e.target.value)} className="input" placeholder="e.g. Beef, Shellfish, Syrups…" />
+            </Row>
+            {/* Purchase info */}
+            <div className="border-t border-[--border] pt-3 mt-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Purchase Info</div>
             </div>
-            <Row label="Notes"><input value={ingNotes} onChange={e => setIngNotes(e.target.value)} className="input" placeholder="Sourcing notes, allergen notes…" /></Row>
+            <div className="grid grid-cols-2 gap-3">
+              <Row label="Purchase unit"><input value={purchUnit} onChange={e => setPurchUnit(e.target.value)} className="input" placeholder="lb, case/6, 750ml bottle" /></Row>
+              <Row label="Cost per purchase unit ($)"><input type="number" step="0.01" min="0" value={purchCost} onChange={e => setPurchCost(e.target.value)} className="input" placeholder="12.00" /></Row>
+            </div>
+            {/* Recipe usage */}
+            <div className="border-t border-[--border] pt-3 mt-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Recipe Usage</div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Row label="Recipe unit">
+                {recipeUnits.length > 0 ? (
+                  <select value={recipeUnit} onChange={e => setRecipeUnit(e.target.value)} className="input bg-white">
+                    <option value="">— Select unit —</option>
+                    {recipeUnits.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                  </select>
+                ) : (
+                  <input value={recipeUnit} onChange={e => setRecipeUnit(e.target.value)} className="input" placeholder="g, oz, cup, each" />
+                )}
+              </Row>
+              <Row label="Conversion (recipe units per purchase unit)">
+                <input type="number" step="0.001" min="0.001" value={conversion} onChange={e => setConversion(e.target.value)} className="input" placeholder="453.6" />
+                <div className="text-[10px] text-[--hint] mt-0.5">e.g. 1 lb = 453.6g → 453.6</div>
+              </Row>
+              <Row label="Trim / yield factor (%)">
+                <input type="number" step="1" min="1" max="100"
+                  value={Math.round(parseFloat(trimFactor) * 100)}
+                  onChange={e => setTrimFactor(String((parseInt(e.target.value) || 100) / 100))}
+                  className="input" placeholder="100" />
+                <div className="text-[10px] text-[--hint] mt-0.5">e.g. 85 = 15% waste</div>
+              </Row>
+              <Row label="Cost per recipe unit (auto)">
+                <div className="input bg-[--surface-2] text-[--accent] font-medium">
+                  {purchCost && conversion && recipeUnit
+                    ? `$${(parseFloat(purchCost) / (parseFloat(conversion) || 1) / ((parseFloat(trimFactor) || 1))).toFixed(4)} / ${recipeUnit}`
+                    : '— fill in fields above'}
+                </div>
+              </Row>
+            </div>
+            {/* Allergens */}
+            <div className="border-t border-[--border] pt-3 mt-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Allergens</div>
+              <div className="flex flex-wrap gap-2">
+                {['Gluten','Dairy','Nuts','Peanuts','Shellfish','Eggs','Soy','Sesame','Fish'].map(a => (
+                  <label key={a} className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="checkbox" checked={allergens.includes(a)}
+                      onChange={e => setAllergens(prev => e.target.checked ? [...prev, a] : prev.filter(x => x !== a))}
+                      className="accent-[--accent]" />
+                    <span>{a}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <Row label="Notes"><input value={ingNotes} onChange={e => setIngNotes(e.target.value)} className="input" placeholder="Sourcing notes, storage details…" /></Row>
           </>)}
 
           {tab === 'vendors' && (<>

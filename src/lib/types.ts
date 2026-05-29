@@ -256,6 +256,7 @@ export interface LibraryIngredient {
   user_id?: string
   name: string
   category: string
+  sub_category?: string
   vendor_id: string | null
   purchase_unit: string
   purchase_unit_cost: number | null
