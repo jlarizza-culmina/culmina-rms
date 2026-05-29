@@ -22,7 +22,7 @@ const CATEGORIES: { key: ServiceWareCategory; label: string; icon: string; examp
 
 export default function ServiceWareLibrary({ userId, restaurantId, locations }: Props) {
   const supabase = createClient()
-  const [category,  setCategory]  = useState<ServiceWareCategory>('plateware')
+  const [category,  setCategory]  = useState<ServiceWareCategory>('Plateware')
   const [items,     setItems]     = useState<ServiceWareItem[]>([])
   const [inventory, setInventory] = useState<Record<string, ServiceWareInventory[]>>({})
   const [selectedId,setSelectedId]= useState<string | null>(null)
