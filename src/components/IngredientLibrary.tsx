@@ -4,11 +4,7 @@ import type { LibraryIngredient, Vendor } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import { ING_CATEGORIES, SUBCATEGORIES, ALLERGENS, CAT_ICONS } from '@/lib/ingredientConstants'
 
-const DAYS       = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
-  produce:'🥦 Produce', meat:'🥩 Meat', seafood:'🐟 Seafood', dairy:'🧀 Dairy',
-  bakery:'🍞 Bakery', pantry:'🥫 Pantry', spices:'🌿 Spices', spirits:'🍶 Spirits',
-  mixers:'🍋 Mixers', frozen:'❄️ Frozen', beverages:'🧃 Beverages', other:'📦 Other',
-}
+const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
 // Cost per recipe unit: purchase_cost / conversion / trim
 function costPerUnit(lib: LibraryIngredient): number | null {
