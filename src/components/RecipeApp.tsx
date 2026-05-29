@@ -57,7 +57,9 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
         const [{ data: rData }, { data: vData }, { data: lData }, { data: cData }] = await Promise.all([
           query,
           supabase.from('vendors').select('*').eq('user_id', user.id).eq('is_active', true).order('name'),
-          supabase.from('ingredient_library').select('*').eq('user_id', user.id).eq('is_active', true).order('name'),
+          supabase.from('ingredient_library').select('*')
+            .or(`user_id.eq.${user.id},user_id.is.null`)
+            .eq('is_active', true).order('name'),
           supabase.from('shopping_checks').select('recipe_id, ingredient_id, checked').eq('user_id', user.id).eq('checked', true),
         ])
 

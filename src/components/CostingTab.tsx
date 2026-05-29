@@ -108,6 +108,17 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
     await onUpdateRecipe(recipe.id, { ingredients: updated })
   }
 
+  // Bulk: link all ingredients that have a clear suggestion
+  async function linkAllSuggestions() {
+    const updated = recipe.ingredients.map(i => {
+      if (i.library_id) return i
+      const suggestion = suggestMatch(i.name)
+      return suggestion ? { ...i, library_id: suggestion.id } : i
+    })
+    await onUpdateRecipe(recipe.id, { ingredients: updated })
+  }
+  const suggestableCount = costBreakdown.filter(r => !r.ing.library_id && r.suggestion).length
+
   // Save target food cost %
   async function saveTarget() {
     const v = parseFloat(targetVal)
@@ -187,21 +198,33 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
               {unlinkedCount > 0 ? `${unlinkedCount} ingredient${unlinkedCount !== 1 ? 's' : ''} not linked to library` : 'all linked ✓'}
             </span>
           </h3>
+          {suggestableCount > 0 && (
+            <button onClick={linkAllSuggestions}
+              className="text-[11px] text-purple-600 hover:text-purple-800 font-medium border border-purple-200 bg-purple-50 px-2.5 py-1 rounded-lg transition-colors">
+              ⚡ Link {suggestableCount} suggestion{suggestableCount !== 1 ? 's' : ''}
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-[--border] overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-[--surface-2]">
               <tr>
-                {['Ingredient','Amount','Library entry','$/unit','Line cost'].map(h => (
+                {['Ingredient','Amount','Library entry','$/unit','Line cost + share'].map(h => (
                   <th key={h} className="text-left py-2 px-3 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {costBreakdown.map(({ ing, lineCost, lib, suggestion }) => (
-                <tr key={ing.id} className="border-t border-[--border]">
-                  <td className="py-2 px-3 font-medium text-[--text]">{ing.name}</td>
+                <tr key={ing.id} className={`border-t border-[--border] ${ing.is_garnish ? 'opacity-60' : ''}`}>
+                  <td className="py-2 px-3">
+                    <div className="font-medium text-[--text]">{ing.name}</div>
+                    {lib && lib.name !== ing.name && (
+                      <div className="text-[9px] text-purple-500">⚡ {lib.name}</div>
+                    )}
+                    {ing.is_garnish && <div className="text-[9px] text-amber-500">garnish</div>}
+                  </td>
                   <td className="py-2 px-3 text-[--muted]">
                     {ing.amount * ratio !== ing.amount
                       ? `${(ing.amount * ratio).toFixed(2)} ${ing.unit}`
@@ -211,9 +234,9 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
                     <select
                       value={ing.library_id || ''}
                       onChange={e => linkIngredient(ing.id, e.target.value || null)}
-                      className={`text-xs border rounded-lg px-2 py-1 outline-none max-w-[180px] w-full bg-white
+                      className={`text-xs border rounded-lg px-2 py-1 outline-none max-w-[200px] w-full bg-white
                         ${ing.library_id ? 'border-[--border-2] text-[--text]' : 'border-dashed border-orange-300 text-orange-500'}`}>
-                      <option value="">{suggestion ? `⚡ Suggested: ${suggestion.name}` : '— Link to library —'}</option>
+                      <option value="">{suggestion ? `⚡ ${suggestion.name}` : '— Link to library —'}</option>
                       {suggestion && <option value={suggestion.id}>✓ {suggestion.name}</option>}
                       {library.filter(l => l.id !== suggestion?.id).map(l => (
                         <option key={l.id} value={l.id}>{l.name} ({l.recipe_unit})</option>
@@ -223,8 +246,18 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
                   <td className="py-2 px-3 text-[--muted]">
                     {lib ? `$${(costPerRecipeUnit(lib) ?? 0).toFixed(4)}/${lib.recipe_unit}` : '—'}
                   </td>
-                  <td className={`py-2 px-3 font-medium ${lineCost !== null ? 'text-[--text]' : 'text-[--hint]'}`}>
-                    {lineCost !== null ? fmt$(lineCost) : '—'}
+                  <td className="py-2 px-3">
+                    {lineCost !== null ? (
+                      <div>
+                        <span className="font-medium text-[--text]">{fmt$(lineCost)}</span>
+                        {totalCost > 0 && (
+                          <div className="mt-1 h-1 bg-[--border] rounded-full w-24 overflow-hidden">
+                            <div className="h-full bg-[--accent] rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (lineCost / totalCost) * 100)}%` }} />
+                          </div>
+                        )}
+                      </div>
+                    ) : <span className="text-[--hint]">—</span>}
                   </td>
                 </tr>
               ))}
