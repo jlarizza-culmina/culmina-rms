@@ -38,7 +38,7 @@ const PREP_METHODS = [
   '—','whole','rough chopped','chopped','finely chopped','minced','julienned',
   'diced','small dice','medium dice','large dice','sliced','thinly sliced',
   'torn','grated','zested','peeled','brunoise','chiffonade','halved',
-  'quartered','crushed','pressed',
+  'quartered','crushed','pressed','muddled',
 ]
 
 const VESSELS = ['Pasta bowl','Side plate','Dinner plate 10"','Dinner plate 12"','Oval platter','Wooden board','Slate board','Small plate','Soup bowl','Coupe bowl','Cast iron skillet','Other']
@@ -199,7 +199,7 @@ export default function RecipeView({
   async function toggleSpecial() {
     await onUpdateRecipe(recipe.id, { is_special: !(recipe.is_special ?? false) })
   }
-  async function updateIngredient(ingId: string, field: keyof Ingredient, value: string | number) {
+  async function updateIngredient(ingId: string, field: keyof Ingredient, value: string | number | boolean) {
     const updated = recipe.ingredients.map(i => i.id === ingId ? { ...i, [field]: value } : i)
     await onUpdateRecipe(recipe.id, { ingredients: updated })
   }
