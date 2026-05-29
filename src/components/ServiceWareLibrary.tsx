@@ -10,11 +10,14 @@ interface Props {
 }
 
 const CATEGORIES: { key: ServiceWareCategory; label: string; icon: string; examples: string }[] = [
-  { key: 'plateware',    label: 'Plateware',     icon: '🍽',  examples: 'Pasta bowl, Dinner plate, Oval platter, Wooden board…' },
-  { key: 'glassware',    label: 'Glassware',     icon: '🥂',  examples: 'Rocks glass, Coupe, Highball, Wine glass, Champagne flute…' },
-  { key: 'flatware',     label: 'Flatware',      icon: '🍴',  examples: 'Dinner fork, Pasta fork, Steak knife, Dessert spoon…' },
-  { key: 'boh_utensils', label: 'BOH Utensils',  icon: '🔪',  examples: 'Ladle, Tongs, Spatula, Sheet pan, Hotel pan, Mixing bowl…' },
-  { key: 'equipment',    label: 'Equipment',     icon: '⚙️',  examples: 'Pasta cooker, KitchenAid mixer, Immersion blender, Induction burner…' },
+  { key: 'Plateware',         label: 'Plateware',         icon: '🍽',  examples: 'Pasta bowl, Dinner plate, Oval platter, Wooden board…' },
+  { key: 'Glassware',         label: 'Glassware',         icon: '🥂',  examples: 'Rocks glass, Coupe, Highball, Wine glass, Champagne flute…' },
+  { key: 'Flatware',          label: 'Flatware',          icon: '🍴',  examples: 'Dinner fork, Pasta fork, Steak knife, Dessert spoon…' },
+  { key: 'Barware',           label: 'Barware',           icon: '🍸',  examples: 'Shaker, Strainer, Jigger, Speed rail, Ice bucket…' },
+  { key: 'Cookware',          label: 'Cookware',          icon: '🍳',  examples: 'Sauté pan, Stock pot, Braiser, Sauce pan, Specialty…' },
+  { key: 'Bakeware',          label: 'Bakeware',          icon: '🥘',  examples: 'Sheet pan, Hotel pan, Baking pan, Cambro, Roasting pan…' },
+  { key: 'Kitchen Utensils',  label: 'Kitchen Utensils',  icon: '🔪',  examples: 'Knives, HACCP boards, Ladle, Tongs, Measuring cups…' },
+  { key: 'Cooking Equipment', label: 'Cooking Equipment', icon: '⚙️',  examples: 'Range, Oven, Combi, Fryer, Blast chiller, Coffee machine…' },
 ]
 
 export default function ServiceWareLibrary({ userId, restaurantId, locations }: Props) {
