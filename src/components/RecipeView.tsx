@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient, ServiceWare, Garnish } from '@/lib/types'
 import CostingTab from './CostingTab'
 import { printRecipeCard, recipeToText } from '@/lib/recipeExport'
@@ -153,26 +153,25 @@ export default function RecipeView({
   const [menuSectionOpts,setMenuSectionOpts]= useState<{value:string;label:string}[]>([])
 
   // Load service ware from library on mount
-  const supabaseClient = require('@/lib/supabase').createClient()
-  useState(() => {
+  const supabase = createClient()
+  useEffect(() => {
     const rid = recipe.restaurant_id
-    if (!rid) return
-    const cats = [
+    const cats: [string, React.Dispatch<React.SetStateAction<string[]>>][] = [
       ['plateware',    setLibVessels],
       ['flatware',     setLibFlatware],
       ['glassware',    setLibGlasses],
       ['boh_utensils', setLibBohUtensils],
       ['equipment',    setLibEquipment],
-    ] as const
+    ]
     cats.forEach(([cat, setter]) => {
-      supabaseClient.from('service_ware_items').select('name').eq('category', cat)
-        .or().eq('is_active', true).order('name')
-        .then(({ data }: { data: {name:string}[]|null }) => setter(data?.map(d => d.name) ?? []))
+      let q = supabase.from('service_ware_items').select('name').eq('category', cat).eq('is_active', true).order('name')
+      if (rid) q = (q as any).or()
+      q.then(({ data }: { data: {name:string}[]|null }) => setter(data?.map((d: {name:string}) => d.name) ?? []))
     })
-    supabaseClient.from('picklist_values').select('value,label').eq('list_name','menu_section')
+    supabase.from('picklist_values').select('value,label').eq('list_name','menu_section')
       .eq('is_active', true).order('sort_order')
       .then(({ data }: { data: {value:string;label:string}[]|null }) => setMenuSectionOpts(data ?? []))
-  })
+  }, [recipe.restaurant_id])
 
   // ── Phase 2 handlers ─────────────────────────────────────
   async function setStage(stage: RecipeStage) {
@@ -675,7 +674,7 @@ export default function RecipeView({
             </div>
           </div>
         )}
-        {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} />}
+        {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} onUpdateRecipe={onUpdateRecipe} />}
         {activeTab === 'nutrition' && <NutritionTab recipe={recipe} ratio={ratio} isCocktail={isCocktail} servings={servings} />}
         {activeTab === 'shopping' && (
           <ShoppingTab recipe={recipe} ratio={ratio} checks={checks} onToggle={onToggleCheck} onClear={onClearChecks} />
@@ -887,49 +886,112 @@ function Detail({ label, value, capitalize }: { label: string; value: string; ca
 }
 
 // ── Cook Plan ─────────────────────────────────────────────────────────────────
-function PlanTab({ recipe, isCocktail }: { recipe: Recipe; isCocktail: boolean }) {
-  const phases: CookPhase[] = isCocktail ? ['mise', 'cook', 'plate'] : ['mise', 'cook', 'plate']
-  const grouped: Record<CookPhase, Step[]> = { mise: [], cook: [], plate: [] }
-  recipe.steps.forEach(s => { grouped[s.phase ?? 'cook'].push(s) })
+function PlanTab({ recipe, isCocktail, onUpdateRecipe }: {
+  recipe: Recipe
+  isCocktail: boolean
+  onUpdateRecipe: (id: string, updates: Partial<Recipe>) => Promise<void>
+}) {
   const totalTime = recipe.steps.reduce((s, x) => s + (x.duration || 0), 0)
+  const PHASES: CookPhase[] = ['mise', 'cook', 'plate']
+
+  async function updateStep(stepId: string, patch: Partial<Step>) {
+    const updated = recipe.steps.map(s => s.id === stepId ? { ...s, ...patch } : s)
+    await onUpdateRecipe(recipe.id, { steps: updated })
+  }
+
+  async function deleteStep(stepId: string) {
+    await onUpdateRecipe(recipe.id, { steps: recipe.steps.filter(s => s.id !== stepId) })
+  }
+
+  async function addStep() {
+    const newStep: Step = { id: crypto.randomUUID(), title: '', description: '', duration: 0, phase: 'cook' }
+    await onUpdateRecipe(recipe.id, { steps: [...recipe.steps, newStep] })
+  }
 
   return (
     <div>
-      <div className="flex items-baseline gap-2 mb-4">
-        <h3 className="font-serif text-sm font-medium text-[--text]">{isCocktail ? 'Build Guide' : 'Cook Plan'}</h3>
-        <span className="text-[11px] text-[--muted]">{recipe.steps.length} steps · ~{totalTime}min</span>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-baseline gap-2">
+          <h3 className="font-serif text-sm font-medium text-[--text]">{isCocktail ? 'Build Guide' : 'Cook Plan'}</h3>
+          <span className="text-[11px] text-[--muted]">{recipe.steps.length} steps · ~{totalTime}min</span>
+        </div>
+        <button onClick={addStep} className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium">
+          + Add step
+        </button>
       </div>
-      {phases.map(phase => {
-        const steps = grouped[phase]
-        if (!steps.length) return null
-        const meta = PHASE_META[phase]
-        return (
-          <div key={phase} className="mb-5">
-            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border mb-3 ${meta.color}`}>
-              {meta.icon} {meta.label}
-            </div>
-            <div className="space-y-2">
-              {steps.map((step, i) => (
-                <div key={step.id} className="flex gap-3 bg-white rounded-xl border border-[--border] p-3.5">
-                  <div className="w-6 h-6 min-w-6 rounded-full bg-[--accent-light] text-[--accent] text-[11px] font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
-                    {i + 1}
+
+      {recipe.steps.length === 0 && (
+        <div className="text-center py-8 text-[--muted] text-sm">
+          No steps yet — click + Add step to build your cook plan.
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {recipe.steps.map((step, i) => {
+          const meta = PHASE_META[step.phase ?? 'cook']
+          return (
+            <div key={step.id} className="bg-white rounded-xl border border-[--border] p-3.5">
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 min-w-6 rounded-full bg-[--accent-light] text-[--accent] text-[11px] font-semibold flex items-center justify-center flex-shrink-0 mt-1">
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <input
+                      key={step.id + '-t'}
+                      defaultValue={step.title}
+                      onBlur={e => updateStep(step.id, { title: e.target.value })}
+                      placeholder="Step title…"
+                      className="flex-1 min-w-0 text-xs font-medium text-[--text] bg-transparent border-b border-transparent hover:border-[--border-2] focus:border-[--accent] outline-none py-0.5"
+                    />
+                    <select
+                      key={step.id + '-p'}
+                      defaultValue={step.phase ?? 'cook'}
+                      onChange={e => updateStep(step.id, { phase: e.target.value as CookPhase })}
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium cursor-pointer outline-none ${meta.color}`}>
+                      {PHASES.map(p => (
+                        <option key={p} value={p}>{PHASE_META[p].icon} {PHASE_META[p].label}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => deleteStep(step.id)} className="text-[--hint] hover:text-red-400 text-xs flex-shrink-0">✕</button>
                   </div>
-                  <div className="flex-1">
-                    <div className="text-xs font-medium text-[--text] mb-1">{step.title}</div>
-                    <div className="text-xs text-[--muted] leading-relaxed">{step.description}</div>
-                    {step.duration > 0 && (
-                      <div className="text-[11px] text-[--accent] mt-2">⏱ {step.duration} min</div>
-                    )}
+                  <textarea
+                    key={step.id + '-d'}
+                    defaultValue={step.description}
+                    onBlur={e => updateStep(step.id, { description: e.target.value })}
+                    placeholder="Describe this step…"
+                    rows={2}
+                    className="w-full text-xs text-[--muted] leading-relaxed bg-transparent border border-transparent hover:border-[--border-2] focus:border-[--accent] rounded-lg px-1.5 py-1 outline-none resize-none placeholder:text-[--hint]"
+                  />
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[10px] text-[--hint]">⏱</span>
+                    <input
+                      key={step.id + '-dur'}
+                      type="number" min="0"
+                      defaultValue={step.duration || ''}
+                      onBlur={e => updateStep(step.id, { duration: parseInt(e.target.value) || 0 })}
+                      placeholder="0"
+                      className="w-12 text-[11px] text-[--accent] bg-transparent border-b border-transparent hover:border-[--border-2] focus:border-[--accent] outline-none text-center"
+                    />
+                    <span className="text-[10px] text-[--hint]">min</span>
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
+
+      {recipe.steps.length > 0 && (
+        <button onClick={addStep}
+          className="w-full mt-3 py-2.5 border-2 border-dashed border-[--border-2] rounded-xl text-xs text-[--muted] hover:border-[--accent] hover:text-[--accent] transition-colors">
+          + Add step
+        </button>
+      )}
     </div>
   )
 }
+
 
 // ── Nutrition ─────────────────────────────────────────────────────────────────
 function NutritionTab({ recipe, ratio, isCocktail, servings }: { recipe: Recipe; ratio: number; isCocktail: boolean; servings: number }) {
