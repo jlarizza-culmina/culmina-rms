@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/weather/capture",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/weather/capture",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/weather/capture",
+      "schedule": "0 23 * * *"
+    }
+  ]
+}
