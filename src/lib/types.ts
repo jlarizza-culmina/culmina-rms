@@ -217,11 +217,21 @@ export interface Garnish {
   presentation: string // on rim | in drink | on pick | on side | floated | etc.
 }
 
+export interface ServiceWareRef {
+  id: string
+  name: string
+  category?: string
+}
+
 export interface ServiceWare {
-  vessel?: string       // for food: "Pasta bowl", "Dinner plate 10\"", etc.
-  flatware?: string[]   // for food: ["Pasta fork", "Steak knife"]
-  glass?: string        // for cocktails: "Rocks glass", "Coupe", etc.
-  garnishes?: Garnish[] // for cocktails: structured garnish rows
+  // Legacy (kept for backwards compat)
+  vessel?: string
+  glass?: string
+  // Library-linked multi-select
+  plateware?: ServiceWareRef[]
+  glassware?: ServiceWareRef[]
+  flatware?: ServiceWareRef[]
+  garnishes?: Garnish[]
 }
 
 // ── Vendor & library types ────────────────────────────────────
