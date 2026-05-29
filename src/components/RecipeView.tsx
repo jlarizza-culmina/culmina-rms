@@ -526,13 +526,14 @@ export default function RecipeView({
                       <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide w-20">Unit</th>
                       <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide">Ingredient</th>
                       <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide w-28">Prep Method</th>
+                      <th className="px-2 py-1.5 text-center text-[10px] font-semibold text-[--hint] uppercase tracking-wide w-16">Garnish</th>
                       <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide">Notes</th>
                       <th className="w-5" />
                     </tr>
                   </thead>
                   <tbody>
                     {recipe.ingredients.map((ing, idx) => (
-                      <tr key={ing.id} className={`border-b border-[--border] last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-[--surface-2]/30'}`}>
+                      <tr key={ing.id} className={`border-b border-[--border] last:border-0 ${ing.is_garnish ? 'bg-amber-50/60' : idx % 2 === 0 ? 'bg-white' : 'bg-[--surface-2]/30'}`}>
                         <td className="px-2 py-1">
                           <input type="number" min="0" step="0.1" defaultValue={ing.amount}
                             onBlur={e => updateIngredient(ing.id, 'amount', parseFloat(e.target.value) || 0)}
@@ -553,6 +554,11 @@ export default function RecipeView({
                             className="w-full bg-transparent outline-none text-xs text-[--muted] cursor-pointer">
                             {PREP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                           </select>
+                        </td>
+                        <td className="px-2 py-1 text-center">
+                          <input type="checkbox" checked={!!ing.is_garnish}
+                            onChange={e => updateIngredient(ing.id, 'is_garnish', e.target.checked)}
+                            className="accent-amber-500 w-3.5 h-3.5 cursor-pointer" title="Mark as garnish" />
                         </td>
                         <td className="px-2 py-1">
                           <input defaultValue={ing.prep_notes || ''} onBlur={e => updateIngredient(ing.id, 'prep_notes', e.target.value)}
@@ -614,12 +620,18 @@ export default function RecipeView({
             <TagEditor recipe={recipe} onUpdateRecipe={onUpdateRecipe} />
 
             {/* ── Equipment needed ── */}
-            <EquipmentSection
-              equipment={recipe.equipment_needed ?? []}
-              libItems={libEquipment}
-              onToggle={toggleEquipment}
-              onAdd={addEquipment}
-            />
+            <div className="mt-4 pt-4 border-t border-[--border]">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-3">Equipment Needed</div>
+              <div className="space-y-3">
+                <LibraryRefPicker
+                  label="Cooking Equipment"
+                  items={libEquipment}
+                  selected={(recipe.equipment_needed ?? []) as ServiceWareRef[]}
+                  onToggle={item => toggleEquipment(item.name)}
+                  emptyHint="Add items to Cooking Equipment library to enable"
+                />
+              </div>
+            </div>
 
             {/* ── Service & Presentation ── */}
             <div className="mt-5 pt-5 border-t border-[--border]">

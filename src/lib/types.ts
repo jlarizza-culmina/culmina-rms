@@ -89,6 +89,7 @@ export interface Ingredient {
   library_id?: string | null
   prep_method?: string   // 'chopped', 'diced', 'julienned', etc.
   prep_notes?: string    // 'from Teitel', 'brunoise for service'
+  is_garnish?: boolean   // marks ingredient as garnish component
 }
 
 export interface Step {
