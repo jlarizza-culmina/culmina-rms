@@ -25,7 +25,7 @@ const TABS: { key: LibTab; label: string; icon: string; singular: string }[] = [
   { key: 'Cooking Equipment', label: 'Cooking Equipment', icon: '⚙️', singular: 'Equipment item' },
 ]
 
-const ING_CATEGORIES = ['produce','meat','seafood','dairy','bakery','pantry','spices','spirits','mixers','frozen','beverages','other']
+
 const SW_CATEGORIES: LibTab[] = ['Plateware','Glassware','Flatware','Barware','Cookware','Bakeware','Kitchen Utensils','Cooking Equipment']
 
 const fmt$ = (n: number | null) => n != null ? `$${n.toFixed(2)}` : '—'
