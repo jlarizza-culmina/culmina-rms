@@ -86,7 +86,7 @@ export default function RecipeListPage({
     if (filterSection !== 'all') r = r.filter(x => (x.menu_sections ?? []).includes(filterSection))
     if (filterTag !== 'all')     r = r.filter(x => (x.tags ?? []).includes(filterTag))
     return sortRecipes(r, sortKey, sortDir)
-  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, sortKey, sortDir])
+  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, filterSection, filterTag, sortKey, sortDir])
 
   const foodCount  = recipes.filter(r => r.recipe_type === 'food').length
   const drinkCount = recipes.filter(r => r.recipe_type === 'cocktail').length
@@ -100,6 +100,13 @@ export default function RecipeListPage({
   const STAGES: RecipeStage[] = ['development','testing','active','specials_candidate','retired']
   const STATUSES: (MenuItemStatus | 'all')[] = ['all','not_on_menu','orderable','on_menu','special']
   const SEASONS = ['spring','summer','fall','winter']
+
+  const activeFilterCount = [filterStage, filterStatus, filterSeason, filterSection, filterTag].filter(f => f !== 'all').length
+
+  function clearFilters() {
+    setFilterStage('all'); setFilterStatus('all'); setFilterSeason('all')
+    setFilterSection('all'); setFilterTag('all'); setSearch('')
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[--bg]">
@@ -121,8 +128,8 @@ export default function RecipeListPage({
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[--hint] text-xs">🔍</span>
         </div>
         <button onClick={() => setShowFilter(f => !f)}
-          className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${showFilter ? 'border-[--accent] text-[--accent] bg-[--accent-light]' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
-          Filter {showFilter ? '▲' : '▼'}
+          className={`px-3 py-1.5 text-xs border rounded-lg transition-colors flex items-center gap-1.5 ${showFilter || activeFilterCount > 0 ? 'border-[--accent] text-[--accent] bg-[--accent-light]' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
+          Filters {activeFilterCount > 0 && <span className="bg-[--accent] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-semibold">{activeFilterCount}</span>} {showFilter ? '▲' : '▼'}
         </button>
         <button onClick={onNewRecipe}
           className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] transition-colors">
@@ -171,33 +178,23 @@ export default function RecipeListPage({
           </div>
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Menu Section</div>
-            <div className="flex gap-1 flex-wrap">
-              <button onClick={() => setFilterSection('all')}
-                className={"text-[11px] px-2 py-0.5 rounded-full border transition-colors " + (filterSection === 'all' ? 'bg-[--accent] text-white border-[--accent]' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
-                All
-              </button>
+            <select value={filterSection} onChange={e => setFilterSection(e.target.value)}
+              className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent] min-w-[160px] capitalize">
+              <option value="all">All sections</option>
               {Array.from(new Set(recipes.flatMap(r => r.menu_sections ?? []))).sort().map(s => (
-                <button key={s} onClick={() => setFilterSection(filterSection === s ? 'all' : s)}
-                  className={"text-[11px] px-2 py-0.5 rounded-full border capitalize transition-colors " + (filterSection === s ? 'bg-[--accent-light] text-[--accent] border-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
-                  {s.replace('_',' ')}
-                </button>
+                <option key={s} value={s}>{s.replace('_',' ')}</option>
               ))}
-            </div>
+            </select>
           </div>
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Tags</div>
-            <div className="flex gap-1 flex-wrap">
-              <button onClick={() => setFilterTag('all')}
-                className={"text-[11px] px-2 py-0.5 rounded-full border transition-colors " + (filterTag === 'all' ? 'bg-[--accent] text-white border-[--accent]' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
-                All
-              </button>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Tag</div>
+            <select value={filterTag} onChange={e => setFilterTag(e.target.value)}
+              className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent] min-w-[160px]">
+              <option value="all">All tags</option>
               {Array.from(new Set(recipes.flatMap(r => r.tags ?? []))).sort().map(t => (
-                <button key={t} onClick={() => setFilterTag(filterTag === t ? 'all' : t)}
-                  className={"text-[11px] px-2 py-0.5 rounded-full border transition-colors " + (filterTag === t ? 'bg-[--accent-light] text-[--accent] border-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
-                  {t}
-                </button>
+                <option key={t} value={t}>{t}</option>
               ))}
-            </div>
+            </select>
           </div>
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Season</div>
@@ -214,6 +211,14 @@ export default function RecipeListPage({
               ))}
             </div>
           </div>
+          {activeFilterCount > 0 && (
+            <div className="flex items-end ml-auto">
+              <button onClick={clearFilters}
+                className="text-[11px] text-[--hint] hover:text-red-400 border border-[--border-2] rounded-lg px-2.5 py-1.5 transition-colors">
+                ✕ Clear all
+              </button>
+            </div>
+          )}
         </div>
       )}
 
