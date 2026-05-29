@@ -1,10 +1,12 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
-import type { Recipe, MenuItemStatus, RecipeStage, ServiceWareRef } from '@/lib/types'
+import type { Recipe, MenuItemStatus, RecipeStage, ServiceWareRef, LibraryIngredient } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
+import { ALLERGENS, SUBCATEGORIES } from '@/lib/ingredientConstants'
 
 interface Props {
   recipes: Recipe[]
+  library?: LibraryIngredient[]
   loading: boolean
   onSelect: (id: string) => void
   onNewRecipe: () => void
@@ -68,6 +70,9 @@ export default function RecipeListPage({
   const [filterSection,   setFilterSection]   = useState<string | 'all'>('all')
   const [filterTag,       setFilterTag]       = useState<string | 'all'>('all')
   const [filterLibCat,    setFilterLibCat]    = useState<string>('')
+  const [filterAllergen,  setFilterAllergen]  = useState<string>('')
+  const [filterSubCat,    setFilterSubCat]    = useState<string>('')
+  const [filterSubCatCat, setFilterSubCatCat] = useState<string>('')
   const [filterLibItem,   setFilterLibItem]   = useState<string>('')  // item id
   const [libFilterItems,  setLibFilterItems]  = useState<ServiceWareRef[]>([])
 
@@ -91,6 +96,16 @@ export default function RecipeListPage({
     if (filterSeason !== 'all')  r = r.filter(x => (x.seasons ?? []).includes(filterSeason))
     if (filterSection !== 'all') r = r.filter(x => (x.menu_sections ?? []).includes(filterSection))
     if (filterTag !== 'all')     r = r.filter(x => (x.tags ?? []).includes(filterTag))
+    if (filterAllergen) {
+      r = r.filter(x => (x.allergens ?? []).some((a: string) => a.toLowerCase() === filterAllergen.toLowerCase()))
+    }
+    if (filterSubCat && filterSubCatCat) {
+      // Find library IDs that match this sub-category
+      const matchIds = new Set(library.filter(l => l.sub_category === filterSubCat).map(l => l.id))
+      if (matchIds.size > 0) {
+        r = r.filter(x => (x.ingredients ?? []).some((i: any) => matchIds.has(i.library_id)))
+      }
+    }
     if (filterLibItem) {
       r = r.filter(x => {
         if (filterLibCat === 'Ingredient')
@@ -107,7 +122,7 @@ export default function RecipeListPage({
       })
     }
     return sortRecipes(r, sortKey, sortDir)
-  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, filterSection, filterTag, filterLibItem, filterLibCat, sortKey, sortDir])
+  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, filterSection, filterTag, filterLibItem, filterLibCat, filterAllergen, filterSubCat, filterSubCatCat, library, sortKey, sortDir])
 
   const foodCount  = recipes.filter(r => r.recipe_type === 'food').length
   const drinkCount = recipes.filter(r => r.recipe_type === 'cocktail').length
@@ -122,7 +137,7 @@ export default function RecipeListPage({
   const STATUSES: (MenuItemStatus | 'all')[] = ['all','not_on_menu','orderable','on_menu','special']
   const SEASONS = ['spring','summer','fall','winter']
 
-  const activeFilterCount = [filterStage, filterStatus, filterSeason, filterSection, filterTag].filter(f => f !== 'all').length + (filterLibItem ? 1 : 0)
+  const activeFilterCount = [filterStage, filterStatus, filterSeason, filterSection, filterTag].filter(f => f !== 'all').length + (filterLibItem ? 1 : 0) + (filterAllergen ? 1 : 0) + (filterSubCat ? 1 : 0)
 
   useEffect(() => {
     if (!filterLibCat) { setLibFilterItems([]); setFilterLibItem(''); return }
@@ -146,6 +161,7 @@ export default function RecipeListPage({
     setFilterStage('all'); setFilterStatus('all'); setFilterSeason('all')
     setFilterSection('all'); setFilterTag('all'); setSearch('')
     setFilterLibCat(''); setFilterLibItem('')
+    setFilterAllergen(''); setFilterSubCat(''); setFilterSubCatCat('')
   }
 
   return (
@@ -251,6 +267,35 @@ export default function RecipeListPage({
               ))}
             </div>
           </div>
+          {/* ── Allergen filter ── */}
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Contains Allergen</div>
+            <select value={filterAllergen} onChange={e => setFilterAllergen(e.target.value)}
+              className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent]">
+              <option value="">All</option>
+              {ALLERGENS.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          {/* ── Ingredient Sub-category filter ── */}
+          {library.length > 0 && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Ingredient Type</div>
+              <div className="flex gap-2">
+                <select value={filterSubCatCat} onChange={e => { setFilterSubCatCat(e.target.value); setFilterSubCat('') }}
+                  className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent]">
+                  <option value="">— Category —</option>
+                  {Object.keys(SUBCATEGORIES).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {filterSubCatCat && SUBCATEGORIES[filterSubCatCat] && (
+                  <select value={filterSubCat} onChange={e => setFilterSubCat(e.target.value)}
+                    className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent]">
+                    <option value="">— Sub-category —</option>
+                    {SUBCATEGORIES[filterSubCatCat].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
           {/* ── Library Item filter ── */}
           <div className="w-full border-t border-[--border] pt-3 mt-1 flex items-center gap-2 flex-wrap">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] flex-shrink-0">By Library Item</div>

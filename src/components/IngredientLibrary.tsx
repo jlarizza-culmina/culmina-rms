@@ -2,11 +2,9 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { LibraryIngredient, Vendor } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
+import { ING_CATEGORIES, SUBCATEGORIES, ALLERGENS, CAT_ICONS } from '@/lib/ingredientConstants'
 
-const CATEGORIES = ['produce','meat','seafood','dairy','bakery','pantry','spices','spirits','mixers','frozen','beverages','other']
-const ALLERGENS  = ['gluten','dairy','nuts','peanuts','shellfish','eggs','soy','sesame','fish']
 const DAYS       = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
-const CAT_LABELS: Record<string,string> = {
   produce:'🥦 Produce', meat:'🥩 Meat', seafood:'🐟 Seafood', dairy:'🧀 Dairy',
   bakery:'🍞 Bakery', pantry:'🥫 Pantry', spices:'🌿 Spices', spirits:'🍶 Spirits',
   mixers:'🍋 Mixers', frozen:'❄️ Frozen', beverages:'🧃 Beverages', other:'📦 Other',
@@ -30,7 +28,7 @@ interface Props {
 
 // ── Blank states ─────────────────────────────────────────────
 const blankIngredient = (): Partial<LibraryIngredient> => ({
-  name: '', category: 'pantry', sub_category: '', vendor_id: null,
+  name: '', category: 'Pantry', sub_category: '' as string, vendor_id: null,
   purchase_unit: '', purchase_unit_cost: null, purchase_unit_size: null,
   recipe_unit: '', recipe_unit_is_metric: false,
   unit_conversion: 1, trim_factor: 1,
@@ -169,7 +167,7 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
             <select value={ingCat} onChange={e => setIngCat(e.target.value)}
               className="px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none bg-white">
               <option value="all">All categories</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABELS[c] ?? c}</option>)}
+              {ING_CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c] ?? ''} {c}</option>)}
             </select>
             <select value={ingVendor} onChange={e => setIngVendor(e.target.value)}
               className="px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none bg-white">
@@ -298,9 +296,9 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
             </div>
             <div>
               <Label>Category</Label>
-              <select value={editIng.category || 'pantry'} onChange={e => setEditIng(p => ({ ...p!, category: e.target.value }))}
+              <select value={editIng.category || 'pantry'} onChange={e => setEditIng(p => ({ ...p!, category: e.target.value, sub_category: '' } as any))}
                 className="fi w-full bg-white">
-                {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABELS[c] ?? c}</option>)}
+                {ING_CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c] ?? ''} {c}</option>)}
               </select>
             </div>
             <div>
@@ -311,6 +309,16 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </div>
+            {SUBCATEGORIES[editIng.category || ''] && (
+              <div>
+                <Label>Sub-category</Label>
+                <select value={(editIng as any).sub_category || ''} onChange={e => setEditIng(p => ({ ...p!, sub_category: e.target.value } as any))}
+                  className="fi w-full bg-white">
+                  <option value="">— None —</option>
+                  {SUBCATEGORIES[editIng.category || ''].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
 
             <div>
               <Label>Sub-category</Label>

@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useMemo, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
+import { ALLERGENS } from '@/lib/ingredientConstants'
 import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient, ServiceWare, ServiceWareRef, Garnish } from '@/lib/types'
 import CostingTab from './CostingTab'
 import { printRecipeCard, recipeToText } from '@/lib/recipeExport'
@@ -154,6 +155,7 @@ export default function RecipeView({
   const [libCookware,   setLibCookware]   = useState<ServiceWareRef[]>([])
   const [libBakeware,   setLibBakeware]   = useState<ServiceWareRef[]>([])
   const [menuSectionOpts,setMenuSectionOpts]= useState<{value:string;label:string}[]>([])
+  const [ingredientUnits,setIngredientUnits]= useState<string[]>([])
 
   // Load service ware from library on mount
   const supabase = createClient()
@@ -179,6 +181,11 @@ export default function RecipeView({
     supabase.from('picklist_values').select('value,label').eq('list_name','menu_section')
       .eq('is_active', true).order('sort_order')
       .then(({ data }: { data: {value:string;label:string}[]|null }) => setMenuSectionOpts(data ?? []))
+    supabase.from('picklist_values').select('value').eq('list_name','ingredient_unit')
+      .eq('is_active', true).order('sort_order')
+      .then(({ data }: { data: {value:string}[]|null }) => {
+        if (data && data.length > 0) setIngredientUnits(data.map(d => d.value))
+      })
   }, [recipe.restaurant_id])
 
   // ── Phase 2 handlers ─────────────────────────────────────
@@ -534,7 +541,7 @@ export default function RecipeView({
                         <td className="px-2 py-1">
                           <select defaultValue={ing.unit} onChange={e => updateIngredient(ing.id, 'unit', e.target.value)}
                             className="w-full bg-transparent outline-none text-xs text-[--text] cursor-pointer">
-                            {INGREDIENT_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                            {(ingredientUnits.length > 0 ? ingredientUnits : INGREDIENT_UNITS).map(u => <option key={u} value={u}>{u}</option>)}
                           </select>
                         </td>
                         <td className="px-2 py-1">

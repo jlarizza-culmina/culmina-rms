@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
+import { ING_CATEGORIES, SUBCATEGORIES, ALLERGENS, CAT_ICONS } from '@/lib/ingredientConstants'
 import type { LibraryIngredient, Vendor, ServiceWareItem, ServiceWareInventory, ServiceWareCategory, Location } from '@/lib/types'
 
 interface Props {
@@ -503,10 +504,18 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
 
           {tab === 'ingredients' && (<>
             <Row label="Category">
-              <select value={category} onChange={e => setCategory(e.target.value)} className="input bg-white capitalize">
-                {ING_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              <select value={category} onChange={e => { setCategory(e.target.value); setSubCategory('') }} className="input bg-white">
+                {ING_CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c] ?? ''} {c}</option>)}
               </select>
             </Row>
+            {SUBCATEGORIES[category] && (
+              <Row label="Sub-category">
+                <select value={subCategory} onChange={e => setSubCategory(e.target.value)} className="input bg-white">
+                  <option value="">— None —</option>
+                  {SUBCATEGORIES[category].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Row>
+            )}
             <Row label="Vendor">
               <select value={vendorId} onChange={e => setVendorId(e.target.value)} className="input bg-white">
                 <option value="">— No vendor —</option>
@@ -563,7 +572,7 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
             <div className="border-t border-[--border] pt-3 mt-1">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Allergens</div>
               <div className="flex flex-wrap gap-2">
-                {['Gluten','Dairy','Nuts','Peanuts','Shellfish','Eggs','Soy','Sesame','Fish'].map(a => (
+                {ALLERGENS.map(a => (
                   <label key={a} className="flex items-center gap-1 text-xs cursor-pointer">
                     <input type="checkbox" checked={allergens.includes(a)}
                       onChange={e => setAllergens(prev => e.target.checked ? [...prev, a] : prev.filter(x => x !== a))}
