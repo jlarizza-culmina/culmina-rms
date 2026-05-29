@@ -33,7 +33,6 @@ export interface WeatherDailySummary {
   capture_count: number
 }
 
-// WMO code → emoji
 export function weatherEmoji(code: number | null): string {
   if (code === null) return '🌡'
   if (code === 0)    return '☀️'
@@ -42,26 +41,24 @@ export function weatherEmoji(code: number | null): string {
   if (code === 3)    return '☁️'
   if (code <= 19)    return '🌫'
   if (code <= 39)    return '🌫'
-  if (code <= 49)    return '🌧'  // drizzle
-  if (code <= 59)    return '🌧'  // rain
-  if (code <= 69)    return '🌨'  // snow
-  if (code <= 79)    return '🌨'  // ice
-  if (code <= 84)    return '🌦'  // shower
-  return '⛈'                      // thunder
+  if (code <= 49)    return '🌧'
+  if (code <= 59)    return '🌧'
+  if (code <= 69)    return '🌨'
+  if (code <= 79)    return '🌨'
+  if (code <= 84)    return '🌦'
+  return '⛈'
 }
 
-// Temperature → commuter sentiment (for production planning hints)
 export function commuterSentiment(tempF: number | null, isPrecip: boolean): string {
   if (tempF === null) return 'unknown'
-  if (isPrecip) return 'indoor-seeking'         // → more hot drinks, stay longer
-  if (tempF < 32)   return 'cold-commute'       // → more coffee, hot drinks
-  if (tempF < 50)   return 'cool-commute'       // → more coffee, hot food
-  if (tempF < 68)   return 'comfortable'        // → normal mix
-  if (tempF < 80)   return 'warm-commute'       // → more cold drinks, aperitivo
-  return 'hot-commute'                           // → cold drinks, spritzes, gelato
+  if (isPrecip) return 'indoor-seeking'
+  if (tempF < 32)   return 'cold-commute'
+  if (tempF < 50)   return 'cool-commute'
+  if (tempF < 68)   return 'comfortable'
+  if (tempF < 80)   return 'warm-commute'
+  return 'hot-commute'
 }
 
-// Sentiment → menu recommendations
 export const SENTIMENT_HINTS: Record<string, string> = {
   'indoor-seeking':  '☕ Rainy — expect longer dwell time, push hot drinks and Bicerin',
   'cold-commute':    '🧥 Cold — prioritize Cappuccino, Cioccolato Caldo, hot food',
@@ -80,13 +77,12 @@ export function formatPrecip(inches: number | null): string {
   if (inches === null) return '—'
   if (inches === 0) return 'None'
   if (inches < 0.01) return 'Trace'
-  return `${(inches * 100).toFixed(1) / 100}"` 
+  return `${inches.toFixed(2)}"`
 }
 
-// Get the capture for a specific hour from a list of captures
 export function captureForHour(
   captures: WeatherCapture[],
-  date: string,        // 'YYYY-MM-DD'
+  date: string,
   hour: 6 | 12 | 18
 ): WeatherCapture | undefined {
   return captures.find(c =>
