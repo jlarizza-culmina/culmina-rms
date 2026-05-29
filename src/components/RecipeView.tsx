@@ -1003,6 +1003,16 @@ function PlanTab({ recipe, isCocktail, onUpdateRecipe, libCookware, libBakeware,
     await onUpdateRecipe(recipe.id, { steps: [...recipe.steps, newStep] })
   }
 
+  async function moveStep(stepId: string, dir: 'up' | 'down') {
+    const steps = [...recipe.steps]
+    const idx = steps.findIndex(s => s.id === stepId)
+    if (dir === 'up' && idx === 0) return
+    if (dir === 'down' && idx === steps.length - 1) return
+    const swap = dir === 'up' ? idx - 1 : idx + 1
+    ;[steps[idx], steps[swap]] = [steps[swap], steps[idx]]
+    await onUpdateRecipe(recipe.id, { steps })
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
