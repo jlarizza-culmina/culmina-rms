@@ -153,24 +153,28 @@ export default function RecipeView({
   const [libEquipment,  setLibEquipment]  = useState<ServiceWareRef[]>([])
   const [libCookware,   setLibCookware]   = useState<ServiceWareRef[]>([])
   const [libBakeware,   setLibBakeware]   = useState<ServiceWareRef[]>([])
-  const [libKitchenUtensils, setLibKitchenUtensils] = useState<ServiceWareRef[]>([])
   const [menuSectionOpts,setMenuSectionOpts]= useState<{value:string;label:string}[]>([])
 
   // Load service ware from library on mount
   const supabase = createClient()
   useEffect(() => {
     const rid = recipe.restaurant_id
-    const cats: [string, React.Dispatch<React.SetStateAction<string[]>>][] = [
-      ['Plateware',         setLibVessels],
+    type SwRow = { id: string; name: string }
+    const cats: [string, React.Dispatch<React.SetStateAction<ServiceWareRef[]>>][] = [
+      ['Plateware',         setLibPlateware],
       ['Flatware',          setLibFlatware],
       ['Glassware',         setLibGlasses],
       ['Kitchen Utensils',  setLibBohUtensils],
       ['Cooking Equipment', setLibEquipment],
+      ['Cookware',          setLibCookware],
+      ['Bakeware',          setLibBakeware],
     ]
     cats.forEach(([cat, setter]) => {
-      let q = supabase.from('service_ware_items').select('name').eq('category', cat).eq('is_active', true).order('name')
-      if (rid) q = (q as any).or()
-      q.then(({ data }: { data: {name:string}[]|null }) => setter(data?.map((d: {name:string}) => d.name) ?? []))
+      let q = (supabase.from('service_ware_items') as any).select('id,name').eq('category', cat).eq('is_active', true).order('name')
+      if (rid) q = q.or(`restaurant_id.eq.${rid},restaurant_id.is.null`)
+      q.then(({ data }: { data: SwRow[]|null }) =>
+        setter((data ?? []).map((d: SwRow) => ({ id: d.id, name: d.name })))
+      )
     })
     supabase.from('picklist_values').select('value,label').eq('list_name','menu_section')
       .eq('is_active', true).order('sort_order')
