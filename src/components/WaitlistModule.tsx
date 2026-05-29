@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { WaitlistSession, Guest, Location, LocationWaitlistSettings } from '@/lib/types'
+import TrainBoard from './TrainBoard'
 
 interface Props {
   userId: string
@@ -129,12 +130,15 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
       <div className="bg-white border-b border-[--border] px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-serif text-xl font-medium text-[--text]">Queue</h1>
-          {locations.length > 1 && (
-            <select value={locationId} onChange={e => setLocationId(e.target.value)}
-              className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none">
-              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          )}
+          <div className="flex items-center gap-3">
+            <TrainBoard compact />
+            {locations.length > 1 && (
+              <select value={locationId} onChange={e => setLocationId(e.target.value)}
+                className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none">
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            )}
+          </div>
         </div>
         <div className="flex gap-0.5">
           {(['queue','guests'] as const).map(t => (
@@ -166,6 +170,11 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
                 <div className="text-2xl font-medium text-[--text]">{totalCovers}</div>
                 <div className="text-[10px] text-[--muted] mt-0.5">Covers waiting</div>
               </div>
+            </div>
+
+            {/* Train arrivals */}
+            <div className="mb-4">
+              <TrainBoard direction="outbound" limit={3} />
             </div>
 
             {/* QR code + join link */}

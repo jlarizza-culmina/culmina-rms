@@ -3,18 +3,21 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Recipe, LibraryIngredient, Vendor } from '@/lib/types'
 import CostReport from './CostReport'
+import WeatherWidget from './WeatherWidget'
+import WeatherAnalyticsPanel from './WeatherAnalyticsPanel'
 
 interface Props {
   userId: string
   restaurantId?: string
 }
 
-type ReportType = 'margins' | 'fat_tail' | 'toast'
+type ReportType = 'margins' | 'fat_tail' | 'toast' | 'weather'
 
 const REPORTS: { key: ReportType; label: string; icon: string; desc: string }[] = [
   { key: 'margins',  label: 'Menu Margins',       icon: '💰', desc: 'Food cost % and gross margin by recipe' },
   { key: 'fat_tail', label: 'Menu Complexity',    icon: '📊', desc: 'Ingredient coverage and long-tail risk audit' },
   { key: 'toast',    label: 'Sales Performance',  icon: '📈', desc: 'Actual covers and revenue from Toast POS' },
+  { key: 'weather',  label: 'Weather',             icon: '🌤', desc: 'Darien weather and commuter sentiment' },
 ]
 
 // ── Fat tail risk tiers ───────────────────────────────────────
@@ -271,6 +274,20 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
               Connect Toast — Coming Soon
             </button>
             <p className="text-[10px] text-[--hint] mt-3">Requires Toast RMS Pro subscription</p>
+          </div>
+        )}
+
+        {/* ── Weather ── */}
+        {report === 'weather' && (
+          <div className="px-6 py-5 space-y-6 max-w-2xl">
+            <div>
+              <h2 className="font-serif text-lg font-medium text-[--text] mb-1">Weather — Darien CT</h2>
+              <p className="text-xs text-[--muted]">
+                Captured at 6am, noon, and 6pm via Open-Meteo. Used to anticipate commuter behaviour and menu demand.
+              </p>
+            </div>
+            <WeatherWidget restaurantId={restaurantId} />
+            <WeatherAnalyticsPanel restaurantId={restaurantId} days={30} />
           </div>
         )}
       </div>
