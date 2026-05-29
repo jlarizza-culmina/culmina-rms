@@ -209,14 +209,18 @@ export default function RecipeView({
 
   // ── Equipment needed ────────────────────────────────────────
   async function toggleEquipment(item: string) {
-    const cur = recipe.equipment_needed ?? []
-    const updated = cur.includes(item) ? cur.filter(x => x !== item) : [...cur, item]
+    const cur = (recipe.equipment_needed ?? []) as ServiceWareRef[]
+    const exists = cur.some(e => (typeof e === 'string' ? e : e.name) === item)
+    const updated = exists
+      ? cur.filter(e => (typeof e === 'string' ? e : e.name) !== item)
+      : [...cur, { id: item, name: item }]
     await onUpdateRecipe(recipe.id, { equipment_needed: updated })
   }
   async function addEquipment(item: string) {
-    const cur = recipe.equipment_needed ?? []
-    if (!item.trim() || cur.includes(item.trim())) return
-    await onUpdateRecipe(recipe.id, { equipment_needed: [...cur, item.trim()] })
+    const cur = (recipe.equipment_needed ?? []) as ServiceWareRef[]
+    const trimmed = item.trim()
+    if (!trimmed || cur.some(e => (typeof e === 'string' ? e : e.name) === trimmed)) return
+    await onUpdateRecipe(recipe.id, { equipment_needed: [...cur, { id: trimmed, name: trimmed }] })
   }
 
   // ── Service ware helpers ─────────────────────────────────────
@@ -806,12 +810,13 @@ function LibraryRefPicker({
 function EquipmentSection({
   equipment, libItems, onToggle, onAdd
 }: {
-  equipment: string[]
-  libItems: string[]
+  equipment: (ServiceWareRef | string)[]
+  libItems: ServiceWareRef[]
   onToggle: (item: string) => void
   onAdd: (item: string) => void
 }) {
   const [newItem, setNewItem] = useState('')
+  const equipNames = equipment.map(e => typeof e === 'string' ? e : e.name)
 
   return (
     <div className="mt-4">
@@ -821,18 +826,18 @@ function EquipmentSection({
       {libItems.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {libItems.map(item => (
-            <button key={item} onClick={() => onToggle(item)}
+            <button key={item.id} onClick={() => onToggle(item.name)}
               className={"text-[11px] px-2.5 py-0.5 rounded-full border transition-colors " +
-                (equipment.includes(item)
+                (equipNames.includes(item.name)
                   ? 'bg-[--accent-light] border-[--accent] text-[--accent] font-medium'
                   : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]')}>
-              {equipment.includes(item) ? '✓ ' : ''}{item}
+              {equipNames.includes(item.name) ? '✓ ' : ''}{item.name}
             </button>
           ))}
         </div>
       )}
       <div className="flex flex-wrap gap-1.5 mb-2">
-        {equipment.filter(e => !libItems.includes(e)).map(e => (
+        {equipNames.filter(e => !libItems.some(l => l.name === e)).map(e => (
           <span key={e} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[--surface-2] border border-[--border] text-[--text]">
             ⚙️ {e}
             <button onClick={() => onToggle(e)} className="text-[--hint] hover:text-red-400">×</button>
