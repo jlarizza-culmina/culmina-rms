@@ -56,7 +56,7 @@ function sortRecipes(recipes: Recipe[], key: SortKey, dir: 'asc' | 'desc'): Reci
 }
 
 export default function RecipeListPage({
-  recipes, loading, onSelect, onNewRecipe,
+  recipes, library = [], loading, onSelect, onNewRecipe,
   prepSelected, onTogglePrepSelect, onOpenPrepList,
 }: Props) {
   const [tab,         setTab]         = useState<RecipeTab>('food')
