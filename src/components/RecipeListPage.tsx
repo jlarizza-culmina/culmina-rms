@@ -1,6 +1,7 @@
 'use client'
-import { useState, useMemo } from 'react'
-import type { Recipe, MenuItemStatus, RecipeStage } from '@/lib/types'
+import { useState, useMemo, useEffect } from 'react'
+import type { Recipe, MenuItemStatus, RecipeStage, ServiceWareRef } from '@/lib/types'
+import { createClient } from '@/lib/supabase'
 
 interface Props {
   recipes: Recipe[]
@@ -66,6 +67,11 @@ export default function RecipeListPage({
   const [filterSeason,    setFilterSeason]    = useState<string | 'all'>('all')
   const [filterSection,   setFilterSection]   = useState<string | 'all'>('all')
   const [filterTag,       setFilterTag]       = useState<string | 'all'>('all')
+  const [filterLibCat,    setFilterLibCat]    = useState<string>('')
+  const [filterLibItem,   setFilterLibItem]   = useState<string>('')  // item id
+  const [libFilterItems,  setLibFilterItems]  = useState<ServiceWareRef[]>([])
+
+  const supabase = createClient()
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -85,8 +91,23 @@ export default function RecipeListPage({
     if (filterSeason !== 'all')  r = r.filter(x => (x.seasons ?? []).includes(filterSeason))
     if (filterSection !== 'all') r = r.filter(x => (x.menu_sections ?? []).includes(filterSection))
     if (filterTag !== 'all')     r = r.filter(x => (x.tags ?? []).includes(filterTag))
+    if (filterLibItem) {
+      r = r.filter(x => {
+        if (filterLibCat === 'Ingredient')
+          return (x.ingredients ?? []).some((i: any) => i.library_id === filterLibItem)
+        if (filterLibCat === 'Plateware')
+          return ((x.service_ware as any)?.plateware ?? []).some((p: any) => p.id === filterLibItem)
+        if (filterLibCat === 'Glassware')
+          return ((x.service_ware as any)?.glassware ?? []).some((g: any) => g.id === filterLibItem)
+        if (filterLibCat === 'Flatware')
+          return ((x.service_ware as any)?.flatware ?? []).some((f: any) => f.id === filterLibItem)
+        // Cookware/Bakeware/Kitchen Utensils/Cooking Equipment — check step equipment
+        return (x.steps ?? []).some((s: any) => (s.equipment ?? []).some((e: any) => e.id === filterLibItem)) ||
+               ((x as any).equipment_needed ?? []).some((e: any) => e.id === filterLibItem)
+      })
+    }
     return sortRecipes(r, sortKey, sortDir)
-  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, filterSection, filterTag, sortKey, sortDir])
+  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, filterSection, filterTag, filterLibItem, filterLibCat, sortKey, sortDir])
 
   const foodCount  = recipes.filter(r => r.recipe_type === 'food').length
   const drinkCount = recipes.filter(r => r.recipe_type === 'cocktail').length
@@ -101,11 +122,30 @@ export default function RecipeListPage({
   const STATUSES: (MenuItemStatus | 'all')[] = ['all','not_on_menu','orderable','on_menu','special']
   const SEASONS = ['spring','summer','fall','winter']
 
-  const activeFilterCount = [filterStage, filterStatus, filterSeason, filterSection, filterTag].filter(f => f !== 'all').length
+  const activeFilterCount = [filterStage, filterStatus, filterSeason, filterSection, filterTag].filter(f => f !== 'all').length + (filterLibItem ? 1 : 0)
+
+  useEffect(() => {
+    if (!filterLibCat) { setLibFilterItems([]); setFilterLibItem(''); return }
+    const loadItems = async () => {
+      if (filterLibCat === 'Ingredient') {
+        const { data } = await supabase.from('ingredient_library').select('id,name')
+          .or('user_id.is.null,user_id.eq.' + (recipes[0] as any)?.user_id ?? '')
+          .eq('is_active', true).order('name')
+        setLibFilterItems((data ?? []).map((d: any) => ({ id: d.id, name: d.name })))
+      } else {
+        const { data } = await (supabase.from('service_ware_items') as any).select('id,name')
+          .eq('category', filterLibCat).eq('is_active', true).order('name')
+        setLibFilterItems((data ?? []).map((d: any) => ({ id: d.id, name: d.name })))
+      }
+    }
+    loadItems()
+    setFilterLibItem('')
+  }, [filterLibCat])
 
   function clearFilters() {
     setFilterStage('all'); setFilterStatus('all'); setFilterSeason('all')
     setFilterSection('all'); setFilterTag('all'); setSearch('')
+    setFilterLibCat(''); setFilterLibItem('')
   }
 
   return (
@@ -210,6 +250,38 @@ export default function RecipeListPage({
                 </button>
               ))}
             </div>
+          </div>
+          {/* ── Library Item filter ── */}
+          <div className="w-full border-t border-[--border] pt-3 mt-1 flex items-center gap-2 flex-wrap">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] flex-shrink-0">By Library Item</div>
+            <select value={filterLibCat} onChange={e => setFilterLibCat(e.target.value)}
+              className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent]">
+              <option value="">— Pick category —</option>
+              <option value="Ingredient">🥬 Ingredient</option>
+              <option value="Plateware">🍽 Plateware</option>
+              <option value="Glassware">🥂 Glassware</option>
+              <option value="Flatware">🍴 Flatware</option>
+              <option value="Barware">🍸 Barware</option>
+              <option value="Cookware">🍳 Cookware</option>
+              <option value="Bakeware">🥘 Bakeware</option>
+              <option value="Kitchen Utensils">🔪 Kitchen Utensils</option>
+              <option value="Cooking Equipment">⚙️ Cooking Equipment</option>
+            </select>
+            {filterLibCat && libFilterItems.length > 0 && (
+              <select value={filterLibItem} onChange={e => setFilterLibItem(e.target.value)}
+                className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent] min-w-[200px]">
+                <option value="">— Pick item —</option>
+                {libFilterItems.map(item => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            )}
+            {filterLibItem && (
+              <span className="text-[11px] bg-[--accent-light] text-[--accent] border border-[--accent] rounded-full px-2 py-0.5 font-medium">
+                {libFilterItems.find(i => i.id === filterLibItem)?.name}
+                <button onClick={() => { setFilterLibItem(''); setFilterLibCat('') }} className="ml-1.5 hover:text-red-500">✕</button>
+              </span>
+            )}
           </div>
           {activeFilterCount > 0 && (
             <div className="flex items-end ml-auto">

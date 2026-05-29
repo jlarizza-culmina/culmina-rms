@@ -97,6 +97,7 @@ export interface Step {
   description: string
   duration: number
   phase: CookPhase
+  equipment?: ServiceWareRef[]
 }
 
 export interface Nutrition {
@@ -170,7 +171,7 @@ export interface Recipe {
   menu_sections?: string[]
   // Service ware (Phase 4)
   service_ware?: ServiceWare
-  equipment_needed?: string[]
+  equipment_needed?: ServiceWareRef[]
   created_at?: string
 }
 

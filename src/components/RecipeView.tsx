@@ -146,11 +146,14 @@ export default function RecipeView({
   }
 
   // ── Library service ware (load from DB) ─────────────────────
-  const [libVessels,    setLibVessels]    = useState<string[]>([])
-  const [libFlatware,   setLibFlatware]   = useState<string[]>([])
-  const [libGlasses,    setLibGlasses]    = useState<string[]>([])
-  const [libBohUtensils,setLibBohUtensils]= useState<string[]>([])
-  const [libEquipment,  setLibEquipment]  = useState<string[]>([])
+  const [libPlateware,  setLibPlateware]  = useState<ServiceWareRef[]>([])
+  const [libFlatware,   setLibFlatware]   = useState<ServiceWareRef[]>([])
+  const [libGlasses,    setLibGlasses]    = useState<ServiceWareRef[]>([])
+  const [libBohUtensils,setLibBohUtensils]= useState<ServiceWareRef[]>([])
+  const [libEquipment,  setLibEquipment]  = useState<ServiceWareRef[]>([])
+  const [libCookware,   setLibCookware]   = useState<ServiceWareRef[]>([])
+  const [libBakeware,   setLibBakeware]   = useState<ServiceWareRef[]>([])
+  const [libKitchenUtensils, setLibKitchenUtensils] = useState<ServiceWareRef[]>([])
   const [menuSectionOpts,setMenuSectionOpts]= useState<{value:string;label:string}[]>([])
 
   // Load service ware from library on mount
@@ -217,9 +220,16 @@ export default function RecipeView({
   async function updateSW(patch: Partial<ServiceWare>) {
     await onUpdateRecipe(recipe.id, { service_ware: { ...sw, ...patch } })
   }
+  async function toggleSwRef(field: 'plateware' | 'glassware' | 'flatware', item: ServiceWareRef) {
+    const cur = (sw[field] ?? []) as ServiceWareRef[]
+    const exists = cur.some(x => x.id === item.id)
+    await updateSW({ [field]: exists ? cur.filter(x => x.id !== item.id) : [...cur, item] })
+  }
   async function toggleFlatware(item: string) {
-    const cur = sw.flatware ?? []
-    await updateSW({ flatware: cur.includes(item) ? cur.filter(x => x !== item) : [...cur, item] })
+    const cur = (sw.flatware ?? []) as ServiceWareRef[]
+    const exists = cur.some(x => x.name === item)
+    const ref: ServiceWareRef = { id: item, name: item }
+    await updateSW({ flatware: exists ? cur.filter(x => x.name !== item) : [...cur, ref] })
   }
   async function addGarnish() {
     const g: Garnish = { id: crypto.randomUUID(), qty: 1, item: 'lemon twist', prep: 'fresh', presentation: 'on rim' }
@@ -601,19 +611,37 @@ export default function RecipeView({
               <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-3">
                 Service & Presentation
               </div>
-              {isCocktail ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[10px] font-medium text-[--muted] mb-1">
-                      Glassware {libGlasses.length > 0 ? <span className="font-normal text-[--hint]">— from library</span> : <span className="font-normal text-[--hint]">— add glassware to library</span>}
-                    </label>
-                    <select defaultValue={sw.glass ?? ''}
-                      onChange={e => updateSW({ glass: e.target.value })}
-                      className="w-56 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
-                      <option value="">— Select glass —</option>
-                      {(libGlasses.length > 0 ? libGlasses : GLASSES).map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                  </div>
+              <div className="space-y-4">
+                {/* Glassware — cocktails & drinks */}
+                {isCocktail && (
+                  <LibraryRefPicker
+                    label="Glassware"
+                    items={libGlasses}
+                    selected={(sw.glassware ?? []) as ServiceWareRef[]}
+                    onToggle={item => toggleSwRef('glassware', item)}
+                    emptyHint="Add items to Glassware library to enable"
+                  />
+                )}
+                {/* Plateware — food */}
+                {!isCocktail && (
+                  <LibraryRefPicker
+                    label="Plateware"
+                    items={libPlateware}
+                    selected={(sw.plateware ?? []) as ServiceWareRef[]}
+                    onToggle={item => toggleSwRef('plateware', item)}
+                    emptyHint="Add items to Plateware library to enable"
+                  />
+                )}
+                {/* Flatware — all recipes */}
+                <LibraryRefPicker
+                  label="Flatware"
+                  items={libFlatware}
+                  selected={(sw.flatware ?? []) as ServiceWareRef[]}
+                  onToggle={item => toggleSwRef('flatware', item)}
+                  emptyHint="Add items to Flatware library to enable"
+                />
+                {/* Garnish — cocktails */}
+                {isCocktail && (
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-[10px] font-medium text-[--muted]">Garnish</label>
@@ -645,37 +673,14 @@ export default function RecipeView({
                       ))}
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[10px] font-medium text-[--muted] mb-1">
-                      Primary Vessel {libVessels.length > 0 ? <span className="font-normal text-[--hint]">— from library</span> : <span className="font-normal text-[--hint]">— add plateware to library</span>}
-                    </label>
-                    <select defaultValue={sw.vessel ?? ''}
-                      onChange={e => updateSW({ vessel: e.target.value })}
-                      className="w-56 px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] bg-white">
-                      <option value="">— Select vessel —</option>
-                      {(libVessels.length > 0 ? libVessels : VESSELS).map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-[--muted] mb-1.5">Required Flatware</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {FLATWARE.map(f => (
-                        <button key={f} onClick={() => toggleFlatware(f)}
-                          className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${(sw.flatware ?? []).includes(f) ? 'bg-[--accent-light] border-[--accent] text-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
-                          {f}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         )}
-        {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} onUpdateRecipe={onUpdateRecipe} />}
+        {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} onUpdateRecipe={onUpdateRecipe}
+              libCookware={libCookware} libBakeware={libBakeware}
+              libKitchenUtensils={libBohUtensils} libEquipment={libEquipment} />}
         {activeTab === 'nutrition' && <NutritionTab recipe={recipe} ratio={ratio} isCocktail={isCocktail} servings={servings} />}
         {activeTab === 'shopping' && (
           <ShoppingTab recipe={recipe} ratio={ratio} checks={checks} onToggle={onToggleCheck} onClear={onClearChecks} />
@@ -753,6 +758,46 @@ export default function RecipeView({
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
+// ── LibraryRefPicker ─────────────────────────────────────────
+function LibraryRefPicker({
+  label, items, selected, onToggle, emptyHint
+}: {
+  label: string
+  items: ServiceWareRef[]
+  selected: ServiceWareRef[]
+  onToggle: (item: ServiceWareRef) => void
+  emptyHint?: string
+}) {
+  if (items.length === 0) return (
+    <div>
+      <div className="text-[10px] font-medium text-[--muted] mb-1">{label}</div>
+      <p className="text-[11px] text-[--hint]">{emptyHint ?? 'No library items found'}</p>
+    </div>
+  )
+  return (
+    <div>
+      <div className="text-[10px] font-medium text-[--muted] mb-1.5">
+        {label}
+        {selected.length > 0 && <span className="ml-2 text-[--accent] font-normal">{selected.length} selected</span>}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map(item => {
+          const active = selected.some(s => s.id === item.id)
+          return (
+            <button key={item.id} onClick={() => onToggle(item)}
+              className={"text-[11px] px-2.5 py-0.5 rounded-full border transition-colors " +
+                (active
+                  ? 'bg-[--accent-light] border-[--accent] text-[--accent] font-medium'
+                  : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]')}>
+              {active ? '✓ ' : ''}{item.name}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── EquipmentSection ─────────────────────────────────────────
 function EquipmentSection({
   equipment, libItems, onToggle, onAdd
@@ -887,17 +932,38 @@ function Detail({ label, value, capitalize }: { label: string; value: string; ca
 }
 
 // ── Cook Plan ─────────────────────────────────────────────────────────────────
-function PlanTab({ recipe, isCocktail, onUpdateRecipe }: {
+function PlanTab({ recipe, isCocktail, onUpdateRecipe, libCookware, libBakeware, libKitchenUtensils, libEquipment }: {
   recipe: Recipe
   isCocktail: boolean
   onUpdateRecipe: (id: string, updates: Partial<Recipe>) => Promise<void>
+  libCookware: ServiceWareRef[]
+  libBakeware: ServiceWareRef[]
+  libKitchenUtensils: ServiceWareRef[]
+  libEquipment: ServiceWareRef[]
 }) {
   const totalTime = recipe.steps.reduce((s, x) => s + (x.duration || 0), 0)
   const PHASES: CookPhase[] = ['mise', 'cook', 'plate']
+  const [expandedEquipment, setExpandedEquipment] = useState<Set<string>>(new Set())
+
+  // All step-usable equipment combined
+  const allStepEquipment = [
+    ...libCookware.map(i => ({ ...i, category: 'Cookware' })),
+    ...libBakeware.map(i => ({ ...i, category: 'Bakeware' })),
+    ...libKitchenUtensils.map(i => ({ ...i, category: 'Kitchen Utensils' })),
+    ...libEquipment.map(i => ({ ...i, category: 'Cooking Equipment' })),
+  ]
 
   async function updateStep(stepId: string, patch: Partial<Step>) {
     const updated = recipe.steps.map(s => s.id === stepId ? { ...s, ...patch } : s)
     await onUpdateRecipe(recipe.id, { steps: updated })
+  }
+
+  async function toggleStepEquipment(stepId: string, item: ServiceWareRef & { category?: string }) {
+    const step = recipe.steps.find(s => s.id === stepId)
+    if (!step) return
+    const cur = step.equipment ?? []
+    const exists = cur.some(e => e.id === item.id)
+    await updateStep(stepId, { equipment: exists ? cur.filter(e => e.id !== item.id) : [...cur, item] })
   }
 
   async function deleteStep(stepId: string) {
@@ -905,7 +971,7 @@ function PlanTab({ recipe, isCocktail, onUpdateRecipe }: {
   }
 
   async function addStep() {
-    const newStep: Step = { id: crypto.randomUUID(), title: '', description: '', duration: 0, phase: 'cook' }
+    const newStep: Step = { id: crypto.randomUUID(), title: '', description: '', duration: 0, phase: 'cook', equipment: [] }
     await onUpdateRecipe(recipe.id, { steps: [...recipe.steps, newStep] })
   }
 
@@ -976,6 +1042,56 @@ function PlanTab({ recipe, isCocktail, onUpdateRecipe }: {
                     />
                     <span className="text-[10px] text-[--hint]">min</span>
                   </div>
+                  {/* Step equipment */}
+                  {allStepEquipment.length > 0 && (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => setExpandedEquipment(prev => {
+                          const n = new Set(prev)
+                          n.has(step.id) ? n.delete(step.id) : n.add(step.id)
+                          return n
+                        })}
+                        className="text-[10px] text-[--hint] hover:text-[--accent] transition-colors">
+                        ⚙ Equipment needed
+                        {(step.equipment ?? []).length > 0 && (
+                          <span className="ml-1 text-[--accent]">({step.equipment?.length})</span>
+                        )}
+                        {expandedEquipment.has(step.id) ? ' ▲' : ' ▼'}
+                      </button>
+                      {(step.equipment ?? []).length > 0 && !expandedEquipment.has(step.id) && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(step.equipment ?? []).map(e => (
+                            <span key={e.id} className="text-[10px] bg-[--surface-2] text-[--muted] px-1.5 py-0.5 rounded border border-[--border]">{e.name}</span>
+                          ))}
+                        </div>
+                      )}
+                      {expandedEquipment.has(step.id) && (
+                        <div className="mt-2 p-2 bg-[--surface-2] rounded-lg">
+                          {['Cookware', 'Bakeware', 'Kitchen Utensils', 'Cooking Equipment'].map(cat => {
+                            const catItems = allStepEquipment.filter(e => e.category === cat)
+                            if (!catItems.length) return null
+                            return (
+                              <div key={cat} className="mb-2 last:mb-0">
+                                <div className="text-[9px] font-semibold uppercase tracking-wide text-[--hint] mb-1">{cat}</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {catItems.map(item => {
+                                    const active = (step.equipment ?? []).some(e => e.id === item.id)
+                                    return (
+                                      <button key={item.id} onClick={() => toggleStepEquipment(step.id, item)}
+                                        className={"text-[10px] px-1.5 py-0.5 rounded border transition-colors " +
+                                          (active ? 'bg-[--accent-light] border-[--accent] text-[--accent] font-medium' : 'border-[--border-2] text-[--muted] hover:bg-white')}>
+                                        {active ? '✓ ' : ''}{item.name}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
