@@ -206,7 +206,7 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-white border-b border-[--border] z-10">
                   <tr>
-                    {['Name','Category','Vendor','Purchase unit','Unit cost','Recipe unit',''].map(h => (
+                    {['Name','Category','Brand','Vendor','Purchase unit','Unit cost','Recipe unit',''].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold text-[--hint] uppercase tracking-wide first:pl-6">{h}</th>
                     ))}
                   </tr>
@@ -218,7 +218,8 @@ export default function LibraryModule({ userId, restaurantId, locations }: Props
                       <tr key={i.id} onClick={() => openEdit(i.id)}
                         className={`border-b border-[--border] cursor-pointer hover:bg-[--accent-light]/20 ${idx%2===0?'bg-white':'bg-[--surface-2]/30'}`}>
                         <td className="px-4 py-2.5 pl-6 font-medium text-[--text]">{i.name}</td>
-                        <td className="px-4 py-2.5 capitalize text-[--muted]">{i.category}</td>
+                        <td className="px-4 py-2.5 capitalize text-[--muted]">{i.sub_category ? `${i.category} › ${i.sub_category}` : i.category}</td>
+                        <td className="px-4 py-2.5 text-[--hint]">{(i as any).brand || '—'}</td>
                         <td className="px-4 py-2.5 text-[--muted]">{vendor?.name ?? '—'}</td>
                         <td className="px-4 py-2.5 text-[--muted]">{i.purchase_unit || '—'}</td>
                         <td className="px-4 py-2.5 text-[--accent] font-medium">{fmt$(i.purchase_unit_cost ?? null)}</td>
@@ -377,7 +378,10 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
   const [ingNotes,     setIngNotes]     = useState(existing?.notes ?? '')
   const [subCategory,  setSubCategory]  = useState((existing as any)?.sub_category ?? '')
   const [allergens,    setAllergens]    = useState<string[]>((existing as any)?.allergens ?? [])
+  const [ingBrand,     setIngBrand]     = useState((existing as any)?.brand ?? '')
+  const [ingDesc,      setIngDesc]      = useState((existing as any)?.description ?? '')
   const [recipeUnits,  setRecipeUnits]  = useState<{value:string;label:string}[]>([])
+  const [costHistory,  setCostHistory]  = useState<{purchase_unit_cost:number;recorded_at:string}[]>([])
   // Vendor form
   const [venContact,   setVenContact]   = useState(existingVen?.contact_name ?? '')
   const [venPhone,     setVenPhone]     = useState(existingVen?.phone ?? '')
@@ -390,29 +394,50 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
   const [swSize,       setSwSize]       = useState(existingSw?.size ?? '')
   const [swDesc,       setSwDesc]       = useState(existingSw?.description ?? '')
 
-  // Load recipe_unit picklist
+  // Load recipe_unit picklist and cost history
   useEffect(() => {
     createClient().from('picklist_values').select('value,label')
       .eq('list_name','recipe_unit').eq('is_active',true).order('sort_order')
       .then(({ data }) => setRecipeUnits(data ?? []))
-  }, [])
+    if (editingId) {
+      createClient().from('ingredient_cost_history').select('purchase_unit_cost,recorded_at')
+        .eq('ingredient_library_id', editingId).order('recorded_at', { ascending: false }).limit(10)
+        .then(({ data }) => setCostHistory(data ?? []))
+    }
+  }, [editingId])
 
   async function handleSave() {
     if (!name.trim()) return
     setSaving(true); setError('')
     try {
       if (tab === 'ingredients') {
+        const oldCost = existing?.purchase_unit_cost
+        const newCost = purchCost ? parseFloat(purchCost) : null
         const payload = {
           user_id: userId, name: name.trim(), category,
           vendor_id: vendorId || null,
-          purchase_unit: purchUnit, purchase_unit_cost: purchCost ? parseFloat(purchCost) : null,
+          purchase_unit: purchUnit, purchase_unit_cost: newCost,
           purchase_unit_size: purchSize ? parseFloat(purchSize) : null,
           recipe_unit: recipeUnit, unit_conversion: parseFloat(conversion) || 1,
           trim_factor: parseFloat(trimFactor) || 1, notes: ingNotes, is_active: true,
           sub_category: subCategory || null, allergens: allergens,
+          brand: ingBrand || null, description: ingDesc || null,
         }
-        if (editingId) await supabase.from('ingredient_library').update(payload).eq('id', editingId)
-        else await supabase.from('ingredient_library').insert(payload)
+        if (editingId) {
+          await supabase.from('ingredient_library').update(payload).eq('id', editingId)
+          // Track cost change
+          if (newCost && newCost !== oldCost) {
+            await supabase.from('ingredient_cost_history').insert({
+              ingredient_library_id: editingId,
+              restaurant_id: restaurantId || null,
+              purchase_unit: purchUnit,
+              purchase_unit_cost: newCost,
+              recorded_by: userId,
+            })
+          }
+        } else {
+          await supabase.from('ingredient_library').insert(payload)
+        }
 
       } else if (tab === 'vendors') {
         const payload = {
@@ -522,10 +547,14 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </Row>
-            {/* Sub-category */}
-            <Row label="Sub-category">
-              <input value={subCategory} onChange={e => setSubCategory(e.target.value)} className="input" placeholder="e.g. Beef, Shellfish, Syrups…" />
-            </Row>
+            <div className="grid grid-cols-2 gap-3">
+              <Row label="Brand">
+                <input value={ingBrand} onChange={e => setIngBrand(e.target.value)} className="input" placeholder="e.g. Campari, Fever-Tree" />
+              </Row>
+              <Row label="Description">
+                <input value={ingDesc} onChange={e => setIngDesc(e.target.value)} className="input" placeholder="Short description" />
+              </Row>
+            </div>
             {/* Purchase info */}
             <div className="border-t border-[--border] pt-3 mt-1">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Purchase Info</div>
@@ -583,6 +612,20 @@ function LibraryModal({ tab, editingId, ingredients, vendors, swItems, swInvento
               </div>
             </div>
             <Row label="Notes"><input value={ingNotes} onChange={e => setIngNotes(e.target.value)} className="input" placeholder="Sourcing notes, storage details…" /></Row>
+            {/* Cost history */}
+            {editingId && costHistory.length > 0 && (
+              <div className="border-t border-[--border] pt-3 mt-1">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Price History</div>
+                <div className="space-y-1">
+                  {costHistory.map((h, i) => (
+                    <div key={i} className="flex items-center justify-between text-[11px]">
+                      <span className="text-[--accent] font-medium">${h.purchase_unit_cost.toFixed(2)}</span>
+                      <span className="text-[--hint]">{new Date(h.recorded_at).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>)}
 
           {tab === 'vendors' && (<>

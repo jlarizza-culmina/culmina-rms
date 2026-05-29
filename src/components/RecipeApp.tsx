@@ -9,6 +9,7 @@ import RecipeView from './RecipeView'
 import CookMode from './CookMode'
 import PrepList from './PrepList'
 import RecipeListPage from './RecipeListPage'
+import UnlinkedIngredients from './UnlinkedIngredients'
 
 interface Props {
   user: User
@@ -37,6 +38,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
 
   // ── Overlay state ────────────────────────────────────────────
   const [addOpen,      setAddOpen]      = useState(false)
+  const [unlinkedOpen, setUnlinkedOpen] = useState(false)
   const [cookMode,     setCookMode]     = useState(false)
   const [prepMode,     setPrepMode]     = useState(false)
   const [prepSelected, setPrepSelected] = useState<Set<string>>(new Set())
@@ -204,6 +206,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
               checks={checks[activeRecipe.id] ?? new Set()}
               activeTab={activeTab}
               library={library}
+              allRecipes={recipes}
               vendors={vendors}
               userId={user.id}
               onTabChange={setActiveTab}
@@ -223,6 +226,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
       ) : (
         <RecipeListPage
           recipes={recipes}
+          library={library}
           loading={loading}
           onSelect={id => {
             const r = recipes.find(x => x.id === id)
@@ -231,6 +235,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
             onSubPageChange?.(r?.name ?? '')
           }}
           onNewRecipe={() => setAddOpen(true)}
+          onShowUnlinked={() => setUnlinkedOpen(true)}
           prepSelected={prepSelected}
           onTogglePrepSelect={togglePrepSelect}
           onOpenPrepList={() => setPrepMode(true)}
@@ -239,6 +244,23 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
 
       {/* ── Overlays ── */}
       {addOpen && <AddModal onClose={() => setAddOpen(false)} onAdd={handleAddRecipes} />}
+      {unlinkedOpen && (
+        <div className="fixed inset-0 bg-black/35 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-[800px] max-w-[96vw] h-[80vh] flex flex-col shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[--border] flex-shrink-0">
+              <h2 className="font-serif text-lg font-medium text-[--text]">Unlinked Ingredients</h2>
+              <button onClick={() => setUnlinkedOpen(false)} className="text-[--hint] hover:text-[--text] text-lg">✕</button>
+            </div>
+            <UnlinkedIngredients
+              userId={user.id}
+              restaurantId={restaurantId}
+              recipes={recipes}
+              library={library}
+              onRecipeUpdated={handleUpdateRecipe}
+            />
+          </div>
+        </div>
+      )}
       {cookMode && activeRecipe && (
         <CookMode recipe={activeRecipe} servings={servings[activeRecipe.id] ?? activeRecipe.base_servings} onClose={() => setCookMode(false)} />
       )}

@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { ALLERGENS } from '@/lib/ingredientConstants'
-import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient, ServiceWare, ServiceWareRef, Garnish } from '@/lib/types'
+import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient, ServiceWare, ServiceWareRef, Garnish, ComponentRef } from '@/lib/types'
 import CostingTab from './CostingTab'
 import { printRecipeCard, recipeToText } from '@/lib/recipeExport'
 
@@ -64,6 +64,7 @@ interface Props {
   checks: Set<string>
   activeTab: Tab
   library: LibraryIngredient[]
+  allRecipes?: Recipe[]      // for component picker
   vendors: Vendor[]
   userId: string
   onTabChange: (t: Tab) => void
@@ -80,7 +81,7 @@ interface Props {
 }
 
 export default function RecipeView({
-  recipe, servings, checks, activeTab, library, vendors, userId,
+  recipe, servings, checks, activeTab, library, allRecipes = [], vendors, userId,
   onTabChange, onServingsChange, onToggleCheck, onClearChecks,
   onDelete, onCookMode, onUpdateRecipe, onSaveVersion,
   onClone, onCreateVariation, onBack,
@@ -156,6 +157,7 @@ export default function RecipeView({
   const [libBakeware,   setLibBakeware]   = useState<ServiceWareRef[]>([])
   const [menuSectionOpts,setMenuSectionOpts]= useState<{value:string;label:string}[]>([])
   const [ingredientUnits,setIngredientUnits]= useState<string[]>([])
+  const [prepMethods,    setPrepMethods]    = useState<string[]>([])
 
   // Load service ware from library on mount
   const supabase = createClient()
@@ -186,6 +188,11 @@ export default function RecipeView({
       .then(({ data }: { data: {value:string}[]|null }) => {
         if (data && data.length > 0) setIngredientUnits(data.map(d => d.value))
       })
+    supabase.from('picklist_values').select('value').eq('list_name','prep_method')
+      .eq('is_active', true).order('sort_order')
+      .then(({ data }: { data: {value:string}[]|null }) => {
+        if (data && data.length > 0) setPrepMethods(data.map(d => d.value))
+      })
   }, [recipe.restaurant_id])
 
   // ── Phase 2 handlers ─────────────────────────────────────
@@ -209,6 +216,25 @@ export default function RecipeView({
   }
   async function deleteIngredient(ingId: string) {
     await onUpdateRecipe(recipe.id, { ingredients: recipe.ingredients.filter(i => i.id !== ingId) })
+  }
+
+  // ── Component / sub-recipe ───────────────────────────────────
+  const [showComponentPicker, setShowComponentPicker] = useState(false)
+  async function addComponent(subRecipe: Recipe) {
+    const comp: ComponentRef = {
+      id: crypto.randomUUID(), type: 'component',
+      recipe_id: subRecipe.id, recipe_name: subRecipe.name,
+      amount: 1, yield_unit: 'batch',
+    }
+    await onUpdateRecipe(recipe.id, { components: [...(recipe.components ?? []), comp] })
+    setShowComponentPicker(false)
+  }
+  async function updateComponent(compId: string, patch: Partial<ComponentRef>) {
+    const updated = (recipe.components ?? []).map(c => c.id === compId ? { ...c, ...patch } : c)
+    await onUpdateRecipe(recipe.id, { components: updated })
+  }
+  async function deleteComponent(compId: string) {
+    await onUpdateRecipe(recipe.id, { components: (recipe.components ?? []).filter(c => c.id !== compId) })
   }
   async function saveServerNotes() {
     await onUpdateRecipe(recipe.id, { server_notes: serverNotesDraft })
@@ -517,6 +543,7 @@ export default function RecipeView({
                   Ingredients <span className="font-sans text-[11px] font-normal text-[--muted]">{recipe.ingredients.length} items</span>
                 </h3>
                 <button onClick={addIngredient} className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium transition-colors">+ Add ingredient</button>
+                <button onClick={() => setShowComponentPicker(true)} className="text-[11px] text-purple-500 hover:text-purple-700 font-medium transition-colors ml-3">+ Component</button>
               </div>
               <div className="border border-[--border] rounded-xl overflow-hidden">
                 <table className="w-full text-xs">
@@ -546,13 +573,24 @@ export default function RecipeView({
                           </select>
                         </td>
                         <td className="px-2 py-1">
-                          <input defaultValue={ing.name} onBlur={e => updateIngredient(ing.id, 'name', e.target.value)}
-                            placeholder="name" className="w-full bg-transparent outline-none text-xs text-[--text] px-1 py-0.5 focus:bg-white focus:border focus:border-[--accent] rounded" />
+                          {(() => {
+                            const libItem = ing.library_id ? library.find(l => l.id === ing.library_id) : null
+                            const displayName = libItem?.name ?? ing.name
+                            return (
+                              <div className="flex items-center gap-1">
+                                <input defaultValue={ing.name} onBlur={e => updateIngredient(ing.id, 'name', e.target.value)}
+                                  placeholder="name" className="w-full bg-transparent outline-none text-xs text-[--text] px-1 py-0.5 focus:bg-white focus:border focus:border-[--accent] rounded" />
+                                {libItem && displayName !== ing.name && (
+                                  <span className="text-[9px] text-[--accent] whitespace-nowrap" title={`Library: ${displayName}`}>⚡</span>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </td>
                         <td className="px-2 py-1">
                           <select defaultValue={ing.prep_method || '—'} onChange={e => updateIngredient(ing.id, 'prep_method', e.target.value === '—' ? '' : e.target.value)}
                             className="w-full bg-transparent outline-none text-xs text-[--muted] cursor-pointer">
-                            {PREP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                            {(prepMethods.length > 0 ? ['—', ...prepMethods] : PREP_METHODS).map(m => <option key={m} value={m}>{m}</option>)}
                           </select>
                         </td>
                         <td className="px-2 py-1 text-center">
@@ -605,6 +643,18 @@ export default function RecipeView({
                     placeholder="Chef notes, sourcing reminders…"
                     className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent]" />
                 </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-[--muted] mb-1">Menu Start Date</label>
+                  <input type="date" defaultValue={recipe.menu_start_date ?? ''}
+                    onBlur={e => onUpdateRecipe(recipe.id, { menu_start_date: e.target.value || null })}
+                    className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-[--muted] mb-1">Menu End Date</label>
+                  <input type="date" defaultValue={recipe.menu_end_date ?? ''}
+                    onBlur={e => onUpdateRecipe(recipe.id, { menu_end_date: e.target.value || null })}
+                    className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent]" />
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-medium text-[--muted] mb-1">Menu Description</label>
@@ -615,6 +665,39 @@ export default function RecipeView({
                   className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-xl outline-none focus:border-[--accent] resize-none placeholder:text-[--hint]" />
               </div>
             </div>
+
+            {/* ── Component recipes ── */}
+            {((recipe.components ?? []).length > 0 || showComponentPicker) && (
+              <div className="mt-4 pt-4 border-t border-[--border]">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-purple-400 mb-2">
+                  Components / Sub-recipes
+                </div>
+                {(recipe.components ?? []).map(comp => (
+                  <div key={comp.id} className="flex items-center gap-2 py-1.5 border-b border-[--border] last:border-0">
+                    <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">⚙</span>
+                    <input type="number" min="0.25" step="0.25" defaultValue={comp.amount}
+                      onBlur={e => updateComponent(comp.id, { amount: parseFloat(e.target.value) || 1 })}
+                      className="w-12 text-xs text-center border-b border-transparent hover:border-[--border-2] focus:border-[--accent] outline-none bg-transparent" />
+                    <select defaultValue={comp.yield_unit}
+                      onChange={e => updateComponent(comp.id, { yield_unit: e.target.value })}
+                      className="text-xs bg-transparent border-b border-transparent hover:border-[--border-2] focus:border-[--accent] outline-none">
+                      {['batch','serving','oz','g','cup','each'].map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <span className="text-xs text-purple-700 font-medium flex-1">{comp.recipe_name}</span>
+                    <button onClick={() => deleteComponent(comp.id)} className="text-[--hint] hover:text-red-400 text-xs">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Component picker modal */}
+            {showComponentPicker && (
+              <ComponentPicker
+                recipes={allRecipes.filter(r => r.id !== recipe.id)}
+                onSelect={addComponent}
+                onClose={() => setShowComponentPicker(false)}
+              />
+            )}
 
             {/* ── UDF Tags ── */}
             <TagEditor recipe={recipe} onUpdateRecipe={onUpdateRecipe} />
@@ -873,6 +956,54 @@ function EquipmentSection({
           className="px-2.5 py-1 text-xs bg-[--surface-2] border border-[--border-2] rounded-lg hover:bg-[--cream-3] disabled:opacity-40">
           +
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── ComponentPicker ───────────────────────────────────────────
+function ComponentPicker({ recipes, onSelect, onClose }: {
+  recipes: Recipe[]
+  onSelect: (r: Recipe) => void
+  onClose: () => void
+}) {
+  const [search, setSearch] = useState('')
+  const filtered = recipes.filter(r =>
+    r.is_component_recipe || r.name.toLowerCase().includes(search.toLowerCase())
+  ).slice(0, 20)
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-white rounded-2xl w-[400px] max-h-[70vh] flex flex-col shadow-xl">
+        <div className="px-5 py-4 border-b border-[--border] flex items-center justify-between">
+          <h3 className="text-sm font-medium text-[--text]">Add Component Recipe</h3>
+          <button onClick={onClose} className="text-[--hint] hover:text-[--text]">✕</button>
+        </div>
+        <div className="px-4 py-2 border-b border-[--border]">
+          <input value={search} onChange={e => setSearch(e.target.value)} autoFocus
+            placeholder="Search recipes…"
+            className="w-full text-xs border border-[--border-2] rounded-lg px-3 py-1.5 outline-none focus:border-[--accent]" />
+        </div>
+        <div className="flex-1 overflow-y-auto divide-y divide-[--border]">
+          {filtered.length === 0 && (
+            <div className="py-8 text-center text-xs text-[--hint]">No recipes found</div>
+          )}
+          {filtered.map(r => (
+            <button key={r.id} onClick={() => onSelect(r)}
+              className="w-full px-5 py-3 text-left hover:bg-[--surface-2] flex items-center gap-3">
+              <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                {r.recipe_type === 'cocktail' ? '🍸' : r.is_component_recipe ? '⚙' : '🍽'}
+              </span>
+              <div>
+                <div className="text-xs font-medium text-[--text]">{r.name}</div>
+                {r.description && <div className="text-[10px] text-[--hint] mt-0.5 truncate max-w-[280px]">{r.description}</div>}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="px-4 py-3 border-t border-[--border] text-[10px] text-[--hint]">
+          Tip: Mark recipes as "Component Recipe" to make them easy to find here.
+        </div>
       </div>
     </div>
   )

@@ -138,13 +138,15 @@ export interface Recipe {
   // Menu & status
   menu_name?: string
   menu_category_id?: string | null
-  menu_start_date?: string | null
-  menu_end_date?: string | null
+  menu_start_date?: string | null   // ISO date e.g. '2027-03-15'
+  menu_end_date?: string | null     // ISO date e.g. '2027-09-30'
   menu_status?: MenuItemStatus
   dayparts?: Daypart[]
   ranking?: number | null     // 1–5
-  // Sub-recipe
+  // Sub-recipe / component
   is_sub_recipe?: boolean
+  is_component_recipe?: boolean
+  components?: ComponentRef[]       // component recipes embedded in this recipe
   sub_recipe_yield_amount?: number | null
   sub_recipe_yield_unit?: string
   // Costing
@@ -168,7 +170,6 @@ export interface Recipe {
   // Menu presentation (Phase 3)
   menu_description?: string
   internal_notes?: string
-  is_component_recipe?: boolean
   menu_sections?: string[]
   // Service ware (Phase 4)
   service_ware?: ServiceWare
@@ -255,15 +256,18 @@ export interface Vendor {
 export interface LibraryIngredient {
   id: string
   user_id?: string
+  restaurant_id?: string | null
   name: string
   category: string
   sub_category?: string
+  brand?: string
+  description?: string
   vendor_id: string | null
   purchase_unit: string
   purchase_unit_cost: number | null
   purchase_unit_size: number | null
   recipe_unit: string
-  recipe_unit_is_metric: boolean
+  recipe_unit_is_metric?: boolean
   unit_conversion: number
   trim_factor: number
   allergens: string[]
@@ -271,6 +275,27 @@ export interface LibraryIngredient {
   is_active: boolean
   created_at?: string
   vendor_name?: string
+}
+
+export interface IngredientCostHistory {
+  id: string
+  ingredient_library_id: string
+  restaurant_id?: string | null
+  purchase_unit: string
+  purchase_unit_cost: number
+  recorded_at: string
+  recorded_by?: string | null
+}
+
+// Component / sub-recipe reference — ingredient row that links to another recipe
+export interface ComponentRef {
+  id: string                   // row id in the parent recipe ingredients
+  type: 'component'
+  recipe_id: string            // the sub-recipe being referenced
+  recipe_name: string          // snapshot of sub-recipe name
+  amount: number               // e.g. 1 (batch), 0.5 (half batch)
+  yield_unit: string           // e.g. 'batch', 'serving', 'oz'
+  notes?: string
 }
 
 export interface MenuPricing {

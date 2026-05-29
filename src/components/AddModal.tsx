@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import type { Recipe } from '@/lib/types'
 
-type Mode = 'generate' | 'paste' | 'import'
+type Mode = 'generate' | 'paste' | 'import' | 'manual'
 
 const SAMPLES = [
   'Spaghetti alla Carbonara', 'Chicken Piccata', 'Mushroom Risotto',
@@ -26,7 +26,37 @@ export default function AddModal({ onClose, onAdd }: Props) {
   const [foundRecipes, setFoundRecipes] = useState<Omit<Recipe, 'id' | 'user_id' | 'created_at'>[] | null>(null)
   const [selectedImports, setSelectedImports] = useState<Set<number>>(new Set())
 
-  const modeLabel = mode === 'generate' ? 'Generate' : mode === 'paste' ? 'Parse Recipe' : 'Find Recipes'
+  // Manual entry
+  const [manualName, setManualName] = useState('')
+  const [manualType, setManualType] = useState<'food' | 'cocktail'>('food')
+  const [manualDesc, setManualDesc] = useState('')
+  const [manualServings, setManualServings] = useState('4')
+  const [manualSection, setManualSection] = useState('')
+
+  const modeLabel = mode === 'generate' ? 'Generate' : mode === 'paste' ? 'Parse Recipe' : mode === 'manual' ? 'Create' : 'Find Recipes'
+
+  async function handleManualCreate() {
+    if (!manualName.trim() || loading) return
+    setLoading(true)
+    try {
+      await onAdd([{
+        name: manualName.trim(),
+        description: manualDesc.trim(),
+        recipe_type: manualType,
+        base_servings: parseInt(manualServings) || 4,
+        prep_time: 0, cook_time: 0,
+        ingredients: [], steps: [],
+        nutrition: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sodium: 0 },
+        tags: [], menu_status: 'not_on_menu', recipe_stage: 'development',
+        menu_sections: manualSection ? [manualSection] : [],
+      }])
+      onClose()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   function fillSample() {
     const s = SAMPLES[Math.floor(Math.random() * SAMPLES.length)]
@@ -95,13 +125,13 @@ export default function AddModal({ onClose, onAdd }: Props) {
 
         {/* Mode toggle */}
         <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 mb-4">
-          {(['generate', 'paste', 'import'] as Mode[]).map(m => (
+          {(['generate', 'paste', 'import', 'manual'] as Mode[]).map(m => (
             <button
               key={m}
               onClick={() => { setMode(m); setError(''); setFoundRecipes(null) }}
               className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${mode === m ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted] hover:text-[--text]'}`}
             >
-              {m === 'generate' ? '✨ Generate' : m === 'paste' ? '📋 Paste' : '💬 Import Chat'}
+              {m === 'generate' ? '✨ Generate' : m === 'paste' ? '📋 Paste' : m === 'import' ? '💬 Import' : '✏️ Manual'}
             </button>
           ))}
         </div>
@@ -208,6 +238,50 @@ export default function AddModal({ onClose, onAdd }: Props) {
               </div>
             )}
 
+            {/* Manual entry */}
+            {mode === 'manual' && (
+              <div className="mb-3 space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-[--muted] mb-1.5">Recipe name *</label>
+                  <input
+                    type="text" value={manualName} onChange={e => setManualName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualCreate()}
+                    placeholder="e.g. Tagliatelle al Ragù, Negroni Classico…"
+                    className="w-full px-3 py-2.5 rounded-lg border border-[--border-2] text-sm bg-white text-[--text] outline-none focus:border-[--accent]"
+                    autoFocus
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-[--muted] mb-1.5">Type</label>
+                    <select value={manualType} onChange={e => setManualType(e.target.value as 'food' | 'cocktail')}
+                      className="w-full px-3 py-2 rounded-lg border border-[--border-2] text-sm bg-white outline-none focus:border-[--accent]">
+                      <option value="food">🍽 Food</option>
+                      <option value="cocktail">🍸 Cocktail / Drink</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[--muted] mb-1.5">Servings</label>
+                    <input type="number" min="1" value={manualServings} onChange={e => setManualServings(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg border border-[--border-2] text-sm bg-white outline-none focus:border-[--accent]" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-[--muted] mb-1.5">Description</label>
+                  <textarea value={manualDesc} onChange={e => setManualDesc(e.target.value)}
+                    placeholder="Brief description shown on menu…" rows={2}
+                    className="w-full px-3 py-2.5 rounded-lg border border-[--border-2] text-sm bg-white text-[--text] outline-none focus:border-[--accent] resize-none" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-[--muted] mb-1.5">Menu Section</label>
+                  <input value={manualSection} onChange={e => setManualSection(e.target.value)}
+                    placeholder="e.g. Antipasti, Pasta, Caffè…"
+                    className="w-full px-3 py-2.5 rounded-lg border border-[--border-2] text-sm bg-white text-[--text] outline-none focus:border-[--accent]" />
+                </div>
+                <p className="text-[11px] text-[--hint]">Creates a blank recipe shell. Add ingredients and steps in the recipe editor.</p>
+              </div>
+            )}
+
             {error && (
               <div className="mb-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
             )}
@@ -217,11 +291,11 @@ export default function AddModal({ onClose, onAdd }: Props) {
                 Cancel
               </button>
               <button
-                onClick={handleSubmit}
-                disabled={loading || !input.trim()}
+                onClick={mode === 'manual' ? handleManualCreate : handleSubmit}
+                disabled={loading || (mode === 'manual' ? !manualName.trim() : !input.trim())}
                 className="px-4 py-2 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] disabled:opacity-50 flex items-center gap-1.5 min-w-[90px] justify-center"
               >
-                {loading ? <><span className="spinner" />{mode === 'import' ? 'Scanning…' : 'Generating…'}</> : modeLabel}
+                {loading ? <><span className="spinner" />{mode === 'import' ? 'Scanning…' : mode === 'manual' ? 'Creating…' : 'Generating…'}</> : modeLabel}
               </button>
             </div>
           </>

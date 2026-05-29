@@ -10,6 +10,7 @@ interface Props {
   loading: boolean
   onSelect: (id: string) => void
   onNewRecipe: () => void
+  onShowUnlinked?: () => void
   prepSelected: Set<string>
   onTogglePrepSelect: (id: string) => void
   onOpenPrepList: () => void
@@ -56,10 +57,11 @@ function sortRecipes(recipes: Recipe[], key: SortKey, dir: 'asc' | 'desc'): Reci
 }
 
 export default function RecipeListPage({
-  recipes, library = [], loading, onSelect, onNewRecipe,
+  recipes, library = [], loading, onSelect, onNewRecipe, onShowUnlinked,
   prepSelected, onTogglePrepSelect, onOpenPrepList,
 }: Props) {
   const [tab,         setTab]         = useState<RecipeTab>('food')
+  const [viewMode,    setViewMode]    = useState<'list' | 'calendar'>('list')
   const [search,      setSearch]      = useState('')
   const [showFilter,  setShowFilter]  = useState(false)
   const [sortKey,     setSortKey]     = useState<SortKey>('created_at')
@@ -186,6 +188,17 @@ export default function RecipeListPage({
         <button onClick={() => setShowFilter(f => !f)}
           className={`px-3 py-1.5 text-xs border rounded-lg transition-colors flex items-center gap-1.5 ${showFilter || activeFilterCount > 0 ? 'border-[--accent] text-[--accent] bg-[--accent-light]' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
           Filters {activeFilterCount > 0 && <span className="bg-[--accent] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-semibold">{activeFilterCount}</span>} {showFilter ? '▲' : '▼'}
+        </button>
+        {onShowUnlinked && (
+          <button onClick={onShowUnlinked}
+            className="px-3 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2] transition-colors flex items-center gap-1">
+            🔗 Unlinked
+          </button>
+        )}
+        <button onClick={() => setViewMode(v => v === 'list' ? 'calendar' : 'list')}
+          className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${viewMode === 'calendar' ? 'border-[--accent] text-[--accent] bg-[--accent-light]' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}
+          title="Toggle calendar view">
+          {viewMode === 'calendar' ? '☰ List' : '📅 Calendar'}
         </button>
         <button onClick={onNewRecipe}
           className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] transition-colors">
@@ -339,9 +352,11 @@ export default function RecipeListPage({
         </div>
       )}
 
-      {/* ── Table ── */}
+      {/* ── Calendar or Table ── */}
       <div className="flex-1 overflow-auto">
-        {loading ? (
+        {viewMode === 'calendar' ? (
+          <MenuCalendarView recipes={recipes} onSelect={onSelect} />
+        ) : loading ? (
           <div className="flex items-center justify-center h-40">
             <div className="text-sm text-[--muted]">Loading recipes…</div>
           </div>
@@ -498,6 +513,105 @@ export default function RecipeListPage({
         </span>
         <span className="ml-auto text-[10px] text-[--hint]">Powered by CulminaRMS</span>
       </div>
+    </div>
+  )
+}
+
+// ── MenuCalendarView ─────────────────────────────────────────
+function MenuCalendarView({ recipes, onSelect }: { recipes: Recipe[]; onSelect: (id: string) => void }) {
+  const today = new Date()
+  const [viewDate, setViewDate] = useState(today)
+
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+  const firstDay = new Date(year, month, 1)
+
+  const scheduled = recipes.filter(r => r.menu_start_date || r.menu_end_date)
+  const currentlyActive = scheduled.filter(r => {
+    const start = r.menu_start_date ? new Date(r.menu_start_date) : null
+    const end = r.menu_end_date ? new Date(r.menu_end_date) : null
+    const now = new Date()
+    if (start && end) return now >= start && now <= end
+    if (start) return now >= start
+    if (end) return now <= end
+    return false
+  })
+
+  const startOfGrid = new Date(firstDay)
+  startOfGrid.setDate(startOfGrid.getDate() - startOfGrid.getDay())
+  const days: Date[] = []
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(startOfGrid)
+    d.setDate(d.getDate() + i)
+    days.push(d)
+  }
+
+  function recipesOnDay(day: Date) {
+    const dayStr = day.toISOString().split('T')[0]
+    return scheduled.filter(r => {
+      const start = r.menu_start_date ?? null
+      const end = r.menu_end_date ?? null
+      if (start && end) return dayStr >= start && dayStr <= end
+      if (start) return dayStr === start
+      if (end) return dayStr === end
+      return false
+    })
+  }
+
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  return (
+    <div className="flex flex-col h-full p-6">
+      {currentlyActive.length > 0 && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-100 rounded-xl">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-green-600 mb-2">Currently on menu</div>
+          <div className="flex flex-wrap gap-1.5">
+            {currentlyActive.map(r => (
+              <button key={r.id} onClick={() => onSelect(r.id)}
+                className="text-[11px] px-2.5 py-0.5 bg-white border border-green-200 text-green-800 rounded-full hover:bg-green-50 font-medium">
+                {r.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+          className="text-xs text-[--muted] hover:text-[--text] px-2 py-1 border border-[--border-2] rounded-lg">← Prev</button>
+        <span className="text-sm font-medium text-[--text]">{MONTHS[month]} {year}</span>
+        <button onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+          className="text-xs text-[--muted] hover:text-[--text] px-2 py-1 border border-[--border-2] rounded-lg">Next →</button>
+      </div>
+      <div className="grid grid-cols-7 mb-1">
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} className="text-center text-[10px] font-semibold uppercase tracking-wide text-[--hint] py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 flex-1 gap-px bg-[--border]">
+        {days.map((day, i) => {
+          const inMonth = day.getMonth() === month
+          const isToday = day.toDateString() === today.toDateString()
+          const dayStr = day.toISOString().split('T')[0]
+          const dayRecipes = recipesOnDay(day)
+          return (
+            <div key={i} className={`bg-white p-1 min-h-[70px] ${!inMonth ? 'opacity-30' : ''}`}>
+              <div className={`text-[11px] font-medium mb-0.5 w-5 h-5 flex items-center justify-center rounded-full ${isToday ? 'bg-[--accent] text-white' : 'text-[--muted]'}`}>
+                {day.getDate()}
+              </div>
+              {dayRecipes.slice(0,3).map(r => (
+                <button key={r.id} onClick={() => onSelect(r.id)}
+                  className="w-full text-left text-[9px] px-1 py-0.5 mb-0.5 bg-[--accent-light] text-[--accent] rounded truncate hover:bg-[--accent] hover:text-white transition-colors block">
+                  {r.name}
+                </button>
+              ))}
+              {dayRecipes.length > 3 && <div className="text-[9px] text-[--hint] px-1">+{dayRecipes.length-3}</div>}
+            </div>
+          )
+        })}
+      </div>
+      {scheduled.length === 0 && (
+        <div className="mt-6 text-center text-xs text-[--hint]">No recipes have menu date ranges. Add start/end dates in recipe Overview → Menu Presentation.</div>
+      )}
     </div>
   )
 }
