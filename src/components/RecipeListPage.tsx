@@ -129,7 +129,7 @@ export default function RecipeListPage({
     const loadItems = async () => {
       if (filterLibCat === 'Ingredient') {
         const { data } = await supabase.from('ingredient_library').select('id,name')
-          .or('user_id.is.null,user_id.eq.' + (recipes[0] as any)?.user_id ?? '')
+          .or('user_id.is.null,user_id.eq.' + ((recipes[0] as any)?.user_id ?? ''))
           .eq('is_active', true).order('name')
         setLibFilterItems((data ?? []).map((d: any) => ({ id: d.id, name: d.name })))
       } else {
