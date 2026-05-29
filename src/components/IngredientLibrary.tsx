@@ -199,7 +199,7 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
                     return (
                       <tr key={ing.id} className="border-b border-[--border] hover:bg-[--surface-2] group">
                         <td className="py-2 pr-3 font-medium text-[--text]">{ing.name}</td>
-                        <td className="py-2 pr-3 text-[--muted]">{CAT_LABELS[ing.category] ?? ing.category}</td>
+                        <td className="py-2 pr-3 text-[--muted]">{CAT_ICONS[ing.category] ? `${CAT_ICONS[ing.category]} ${ing.category}` : ing.category}</td>
                         <td className="py-2 pr-3 text-[--muted]">{vend?.name ?? '—'}</td>
                         <td className="py-2 pr-3 text-[--muted]">
                           {ing.purchase_unit_cost ? `$${ing.purchase_unit_cost.toFixed(2)}` : '—'}
