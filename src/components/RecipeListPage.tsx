@@ -75,6 +75,7 @@ export default function RecipeListPage({
   const [filterAllergen,  setFilterAllergen]  = useState<string>('')
   const [filterSubCat,    setFilterSubCat]    = useState<string>('')
   const [filterSubCatCat, setFilterSubCatCat] = useState<string>('')
+  const [filterComponent, setFilterComponent] = useState<boolean>(false)
   const [filterLibItem,   setFilterLibItem]   = useState<string>('')  // item id
   const [libFilterItems,  setLibFilterItems]  = useState<ServiceWareRef[]>([])
 
@@ -98,8 +99,10 @@ export default function RecipeListPage({
     if (filterSeason !== 'all')  r = r.filter(x => (x.seasons ?? []).includes(filterSeason))
     if (filterSection !== 'all') r = r.filter(x => (x.menu_sections ?? []).includes(filterSection))
     if (filterTag !== 'all')     r = r.filter(x => (x.tags ?? []).includes(filterTag))
-    if (filterAllergen) {
-      r = r.filter(x => (x.allergens ?? []).some((a: string) => a.toLowerCase() === filterAllergen.toLowerCase()))
+    if (filterComponent) {
+      r = r.filter(x => x.is_component_recipe === true)
+    }
+    if (filterAllergen) {      r = r.filter(x => (x.allergens ?? []).some((a: string) => a.toLowerCase() === filterAllergen.toLowerCase()))
     }
     if (filterSubCat && filterSubCatCat) {
       // Find library IDs that match this sub-category
@@ -124,7 +127,7 @@ export default function RecipeListPage({
       })
     }
     return sortRecipes(r, sortKey, sortDir)
-  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, filterSection, filterTag, filterLibItem, filterLibCat, filterAllergen, filterSubCat, filterSubCatCat, library, sortKey, sortDir])
+  }, [typeFiltered, search, filterStage, filterStatus, filterSeason, filterSection, filterTag, filterLibItem, filterLibCat, filterAllergen, filterSubCat, filterSubCatCat, filterComponent, library, sortKey, sortDir])
 
   const foodCount  = recipes.filter(r => r.recipe_type === 'food').length
   const drinkCount = recipes.filter(r => r.recipe_type === 'cocktail').length
@@ -139,16 +142,14 @@ export default function RecipeListPage({
   const STATUSES: (MenuItemStatus | 'all')[] = ['all','not_on_menu','orderable','on_menu','special']
   const SEASONS = ['spring','summer','fall','winter']
 
-  const activeFilterCount = [filterStage, filterStatus, filterSeason, filterSection, filterTag].filter(f => f !== 'all').length + (filterLibItem ? 1 : 0) + (filterAllergen ? 1 : 0) + (filterSubCat ? 1 : 0)
+  const activeFilterCount = [filterStage, filterStatus, filterSeason, filterSection, filterTag].filter(f => f !== 'all').length + (filterLibItem ? 1 : 0) + (filterAllergen ? 1 : 0) + (filterSubCat ? 1 : 0) + (filterComponent ? 1 : 0)
 
   useEffect(() => {
     if (!filterLibCat) { setLibFilterItems([]); setFilterLibItem(''); return }
     const loadItems = async () => {
       if (filterLibCat === 'Ingredient') {
-        const { data } = await supabase.from('ingredient_library').select('id,name')
-          .or('user_id.is.null,user_id.eq.' + ((recipes[0] as any)?.user_id ?? ''))
-          .eq('is_active', true).order('name')
-        setLibFilterItems((data ?? []).map((d: any) => ({ id: d.id, name: d.name })))
+        // Use the library prop already loaded in RecipeApp (includes global + restaurant items)
+        setLibFilterItems(library.map(l => ({ id: l.id, name: l.name })))
       } else {
         const { data } = await (supabase.from('service_ware_items') as any).select('id,name')
           .eq('category', filterLibCat).eq('is_active', true).order('name')
@@ -157,13 +158,14 @@ export default function RecipeListPage({
     }
     loadItems()
     setFilterLibItem('')
-  }, [filterLibCat])
+  }, [filterLibCat, library])
 
   function clearFilters() {
     setFilterStage('all'); setFilterStatus('all'); setFilterSeason('all')
     setFilterSection('all'); setFilterTag('all'); setSearch('')
     setFilterLibCat(''); setFilterLibItem('')
     setFilterAllergen(''); setFilterSubCat(''); setFilterSubCatCat('')
+    setFilterComponent(false)
   }
 
   return (
@@ -280,6 +282,20 @@ export default function RecipeListPage({
               ))}
             </div>
           </div>
+          {/* ── Component recipe filter ── */}
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Recipe Type</div>
+            <button
+              onClick={() => setFilterComponent(f => !f)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                filterComponent
+                  ? 'bg-purple-50 border-purple-300 text-purple-700 font-medium'
+                  : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'
+              }`}>
+              ⚙ Component recipes only
+            </button>
+          </div>
+
           {/* ── Allergen filter ── */}
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Contains Allergen</div>
