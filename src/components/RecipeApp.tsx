@@ -17,9 +17,10 @@ interface Props {
   ctx?: AppContext
   onSubPageChange?: (title: string) => void
   onNavigateHome?: () => void
+  onBreadcrumbSegmentClick?: (handler: (idx: number) => void) => void
 }
 
-export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, onNavigateHome }: Props) {
+export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, onNavigateHome, onBreadcrumbSegmentClick }: Props) {
   const supabase = createClient()
 
   // ── Data state ───────────────────────────────────────────────
@@ -42,10 +43,10 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
   }
 
   function navigateToComponent(id: string, name: string) {
-    setNavStack(prev => [...prev, { id, name }])
-    setActiveTab('overview')
-    // Signal the full path to AppShell
+    // Compute new stack BEFORE setState to avoid stale closure
     const newStack = [...navStack, { id, name }]
+    setNavStack(newStack)
+    setActiveTab('overview')
     onSubPageChange?.(newStack.map(e => e.name).join(' › '))
   }
 
@@ -67,6 +68,12 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
     setActiveTab('overview')
     onSubPageChange?.(newStack.map(e => e.name).join(' › '))
   }
+
+  // Register goBackToIndex with AppShell so breadcrumb clicks sync navStack
+  useEffect(() => {
+    onBreadcrumbSegmentClick?.(goBackToIndex)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navStack])
 
   // ── Recipe view state ────────────────────────────────────────
   const [servings, setServings] = useState<Record<string, number>>({})

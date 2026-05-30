@@ -38,6 +38,7 @@ export default function AppShell({ user }: Props) {
   const [module,      setModule]      = useState<AppModule>('home')
   const [moduleTitle,  setModuleTitle]  = useState('')
   const [subPageTitle, setSubPageTitle] = useState('')
+  const [breadcrumbHandler, setBreadcrumbHandler] = useState<((idx: number) => void) | null>(null)
 
   // ── Load context ───────────────────────────────────────────
   const loadContext = useCallback(async () => {
@@ -210,6 +211,8 @@ export default function AppShell({ user }: Props) {
                   onClick={() => {
                     const newPath = arr.slice(0, idx + 1).join(' › ')
                     setSubPageTitle(newPath)
+                    // Sync RecipeApp navStack
+                    breadcrumbHandler?.(idx)
                   }}
                   className="text-[--muted] hover:text-[--text] transition-colors truncate max-w-[120px]">
                   {segment}
@@ -298,6 +301,7 @@ export default function AppShell({ user }: Props) {
             user={user}
             restaurantId={restaurant.id}
             ctx={ctx}
+            onBreadcrumbSegmentClick={handler => setBreadcrumbHandler(() => handler)}
           />
         </div>
       </div>
