@@ -11,6 +11,7 @@ import ProductionPlanner from './ProductionPlanner'
 import TMinusSchedule from './TMinusSchedule'
 import AnalyticsModule from './AnalyticsModule'
 import WaitlistModule from './WaitlistModule'
+import MenuModule from './MenuModule'
 import SettingsPage from './SettingsPage'
 import SuperAdmin from './SuperAdmin'
 
@@ -201,10 +202,23 @@ export default function AppShell({ user }: Props) {
               <span className="text-[--text] font-medium truncate max-w-[200px]">{moduleTitle}</span>
             )}
           </>)}
-          {subPageTitle && (<>
-            <span className="text-[--hint] flex-shrink-0">›</span>
-            <span className="text-[--text] font-medium truncate max-w-[200px]">{subPageTitle}</span>
-          </>)}
+          {subPageTitle && subPageTitle.split(' › ').map((segment, idx, arr) => (
+            <span key={idx} className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[--hint] flex-shrink-0">›</span>
+              {idx < arr.length - 1 ? (
+                <button
+                  onClick={() => {
+                    const newPath = arr.slice(0, idx + 1).join(' › ')
+                    setSubPageTitle(newPath)
+                  }}
+                  className="text-[--muted] hover:text-[--text] transition-colors truncate max-w-[120px]">
+                  {segment}
+                </button>
+              ) : (
+                <span className="text-[--text] font-medium truncate max-w-[200px]">{segment}</span>
+              )}
+            </span>
+          ))}
         </nav>
       )}
 
@@ -284,6 +298,26 @@ export default function AppShell({ user }: Props) {
             user={user}
             restaurantId={restaurant.id}
             ctx={ctx}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // ── Menus ──────────────────────────────────────────────────
+  if (module === 'menus') {
+    const primaryLocation = locations[0]
+    return (
+      <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
+        <TopBar />
+        <div className="flex-1 overflow-hidden">
+          <MenuModule
+            userId={user.id}
+            restaurantId={restaurant.id}
+            locationId={primaryLocation?.id}
+            recipes={[]}
+            library={[]}
           />
         </div>
       </div>

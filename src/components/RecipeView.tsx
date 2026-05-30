@@ -64,9 +64,12 @@ interface Props {
   checks: Set<string>
   activeTab: Tab
   library: LibraryIngredient[]
-  allRecipes?: Recipe[]      // for component picker
+  allRecipes?: Recipe[]
   vendors: Vendor[]
   userId: string
+  navStack?: {id: string; name: string}[]
+  onNavigateToRecipe?: (id: string, name: string) => void
+  onNavigateToStackIndex?: (idx: number) => void
   onTabChange: (t: Tab) => void
   onServingsChange: (delta: number) => void
   onToggleCheck: (id: string) => void
@@ -82,6 +85,7 @@ interface Props {
 
 export default function RecipeView({
   recipe, servings, checks, activeTab, library, allRecipes = [], vendors, userId,
+  navStack = [], onNavigateToRecipe, onNavigateToStackIndex,
   onTabChange, onServingsChange, onToggleCheck, onClearChecks,
   onDelete, onCookMode, onUpdateRecipe, onSaveVersion,
   onClone, onCreateVariation, onBack,
@@ -559,8 +563,7 @@ export default function RecipeView({
                     </tr>
                   </thead>
                   <tbody>
-                    {recipe.ingredients.map((ing, idx) => (
-                      <tr key={ing.id} className={`border-b border-[--border] last:border-0 ${ing.is_garnish ? 'bg-amber-50/60' : idx % 2 === 0 ? 'bg-white' : 'bg-[--surface-2]/30'}`}>
+                    {recipe.ingredients.map((ing, idx) => (                      <tr key={ing.id} className={`border-b border-[--border] last:border-0 ${ing.is_garnish ? 'bg-amber-50/60' : idx % 2 === 0 ? 'bg-white' : 'bg-[--surface-2]/30'}`}>
                         <td className="px-2 py-1">
                           <input type="number" min="0" step="0.1" defaultValue={ing.amount}
                             onBlur={e => updateIngredient(ing.id, 'amount', parseFloat(e.target.value) || 0)}
@@ -604,6 +607,45 @@ export default function RecipeView({
                         </td>
                         <td className="px-1 py-1">
                           <button onClick={() => deleteIngredient(ing.id)} className="text-[--hint] hover:text-red-400 text-[11px] px-0.5 transition-colors">✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {/* ── Component rows ── */}
+                    {(recipe.components ?? []).map((comp, idx) => (
+                      <tr key={comp.id} className="border-b border-[--border] last:border-0 bg-purple-50/40">
+                        <td className="px-2 py-1">
+                          <input type="number" min="0.25" step="0.25" defaultValue={comp.amount}
+                            onBlur={e => updateComponent(comp.id, { amount: parseFloat(e.target.value) || 1 })}
+                            className="w-full bg-transparent outline-none text-xs text-[--accent] font-medium px-1 py-0.5 focus:bg-white focus:border focus:border-[--accent] rounded" />
+                        </td>
+                        <td className="px-2 py-1">
+                          <select defaultValue={comp.yield_unit}
+                            onChange={e => updateComponent(comp.id, { yield_unit: e.target.value })}
+                            className="w-full bg-transparent outline-none text-xs cursor-pointer">
+                            {['batch','serving','oz','g','cup','each'].map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1" colSpan={2}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">⚙ COMPONENT</span>
+                            {onNavigateToRecipe ? (
+                              <button
+                                onClick={() => onNavigateToRecipe(comp.recipe_id, comp.recipe_name)}
+                                className="text-xs font-medium text-purple-700 hover:text-purple-900 hover:underline text-left">
+                                {comp.recipe_name}
+                              </button>
+                            ) : (
+                              <span className="text-xs font-medium text-purple-700">{comp.recipe_name}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-1" />
+                        <td className="px-2 py-1">
+                          <input defaultValue={comp.notes || ''} onBlur={e => updateComponent(comp.id, { notes: e.target.value })}
+                            placeholder="notes…" className="w-full bg-transparent outline-none text-xs text-[--muted] px-1 py-0.5 focus:bg-white focus:border focus:border-[--accent] rounded" />
+                        </td>
+                        <td className="px-1 py-1">
+                          <button onClick={() => deleteComponent(comp.id)} className="text-[--hint] hover:text-red-400 text-[11px] px-0.5 transition-colors">✕</button>
                         </td>
                       </tr>
                     ))}
@@ -665,30 +707,6 @@ export default function RecipeView({
                   className="w-full px-2.5 py-1.5 text-xs border border-[--border-2] rounded-xl outline-none focus:border-[--accent] resize-none placeholder:text-[--hint]" />
               </div>
             </div>
-
-            {/* ── Component recipes ── */}
-            {((recipe.components ?? []).length > 0 || showComponentPicker) && (
-              <div className="mt-4 pt-4 border-t border-[--border]">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-purple-400 mb-2">
-                  Components / Sub-recipes
-                </div>
-                {(recipe.components ?? []).map(comp => (
-                  <div key={comp.id} className="flex items-center gap-2 py-1.5 border-b border-[--border] last:border-0">
-                    <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">⚙</span>
-                    <input type="number" min="0.25" step="0.25" defaultValue={comp.amount}
-                      onBlur={e => updateComponent(comp.id, { amount: parseFloat(e.target.value) || 1 })}
-                      className="w-12 text-xs text-center border-b border-transparent hover:border-[--border-2] focus:border-[--accent] outline-none bg-transparent" />
-                    <select defaultValue={comp.yield_unit}
-                      onChange={e => updateComponent(comp.id, { yield_unit: e.target.value })}
-                      className="text-xs bg-transparent border-b border-transparent hover:border-[--border-2] focus:border-[--accent] outline-none">
-                      {['batch','serving','oz','g','cup','each'].map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                    <span className="text-xs text-purple-700 font-medium flex-1">{comp.recipe_name}</span>
-                    <button onClick={() => deleteComponent(comp.id)} className="text-[--hint] hover:text-red-400 text-xs">✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* Component picker modal */}
             {showComponentPicker && (

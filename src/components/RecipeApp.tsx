@@ -29,8 +29,44 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
   const [loading,  setLoading]  = useState(true)
 
   // ── Navigation state ─────────────────────────────────────────
-  const [activeId,  setActiveId]  = useState<string | null>(null)
+  // Stack of {id, name} — supports component deep-linking
+  const [navStack,  setNavStack]  = useState<{id: string; name: string}[]>([])
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'nutrition' | 'shopping' | 'costing'>('overview')
+
+  const activeId = navStack.length > 0 ? navStack[navStack.length - 1].id : null
+
+  function navigateTo(id: string, name: string) {
+    setNavStack([{ id, name }])
+    setActiveTab('overview')
+    onSubPageChange?.(name)
+  }
+
+  function navigateToComponent(id: string, name: string) {
+    setNavStack(prev => [...prev, { id, name }])
+    setActiveTab('overview')
+    // Signal the full path to AppShell
+    const newStack = [...navStack, { id, name }]
+    onSubPageChange?.(newStack.map(e => e.name).join(' › '))
+  }
+
+  function goBack() {
+    if (navStack.length <= 1) {
+      setNavStack([])
+      setActiveTab('overview')
+      onSubPageChange?.('')
+    } else {
+      const newStack = navStack.slice(0, -1)
+      setNavStack(newStack)
+      onSubPageChange?.(newStack.map(e => e.name).join(' › '))
+    }
+  }
+
+  function goBackToIndex(idx: number) {
+    const newStack = navStack.slice(0, idx + 1)
+    setNavStack(newStack)
+    setActiveTab('overview')
+    onSubPageChange?.(newStack.map(e => e.name).join(' › '))
+  }
 
   // ── Recipe view state ────────────────────────────────────────
   const [servings, setServings] = useState<Record<string, number>>({})
@@ -104,7 +140,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
     const added: Recipe[] = data.map(r => ({ ...r, servings: r.base_servings }))
     setRecipes(prev => [...added, ...prev])
     setServings(prev => { const n = { ...prev }; added.forEach(r => { n[r.id] = r.base_servings }); return n })
-    if (added.length === 1) { setActiveId(added[0].id); setActiveTab('overview'); onSubPageChange?.(added[0].name ?? '') }
+    if (added.length === 1) { navigateTo(added[0].id, added[0].name ?? '') }
   }, [user.id, restaurantId, supabase])
 
   const handleUpdateRecipe = useCallback(async (id: string, updates: Partial<Recipe>) => {
@@ -138,7 +174,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
       const cloned: Recipe = { ...data, servings: data.base_servings }
       setRecipes(prev => [cloned, ...prev])
       setServings(prev => ({ ...prev, [data.id]: data.base_servings }))
-      setActiveId(data.id)
+      navigateTo(data.id, data.name ?? '')
     }
   }, [recipes, user.id, restaurantId, supabase])
 
@@ -155,7 +191,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
       const variation: Recipe = { ...data, servings: data.base_servings }
       setRecipes(prev => [variation, ...prev])
       setServings(prev => ({ ...prev, [data.id]: data.base_servings }))
-      setActiveId(data.id)
+      navigateTo(data.id, data.name ?? '')
     }
   }, [recipes, user.id, restaurantId, supabase])
 
@@ -164,7 +200,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
     await supabase.from('recipes').delete().eq('id', id)
     setRecipes(prev => prev.filter(r => r.id !== id))
     setPrepSelected(prev => { const n = new Set(prev); n.delete(id); return n })
-    if (activeId === id) setActiveId(null)
+    if (activeId === id) { setNavStack([]); onSubPageChange?.('') }
   }, [activeId, supabase])
 
   const handleServings = useCallback((id: string, delta: number) => {
@@ -193,7 +229,6 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
     setPrepSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
-  function goBack() { setActiveId(null); setActiveTab('overview'); onSubPageChange?.('') }
 
   // ── Render ───────────────────────────────────────────────────
   return (
@@ -211,6 +246,9 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
               allRecipes={recipes}
               vendors={vendors}
               userId={user.id}
+              navStack={navStack}
+              onNavigateToRecipe={navigateToComponent}
+              onNavigateToStackIndex={goBackToIndex}
               onTabChange={setActiveTab}
               onServingsChange={d => handleServings(activeRecipe.id, d)}
               onToggleCheck={id => handleToggleCheck(activeRecipe.id, id)}
@@ -232,9 +270,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
           loading={loading}
           onSelect={id => {
             const r = recipes.find(x => x.id === id)
-            setActiveId(id)
-            setActiveTab('overview')
-            onSubPageChange?.(r?.name ?? '')
+            navigateTo(id, r?.name ?? '')
           }}
           onNewRecipe={() => setAddOpen(true)}
           onShowUnlinked={() => setUnlinkedOpen(true)}
