@@ -600,16 +600,18 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
         )}
 
         {tab === 'nutrition' && (
-          <div className="space-y-4">
-            <div>
+          <div className="flex flex-col h-full space-y-4">
+            <div className="flex-shrink-0">
               <h3 className="text-sm font-medium text-[--text] mb-1">Nutrition Data</h3>
               <p className="text-xs text-[--muted]">
                 Enrich your ingredient library with nutrition data from the USDA FoodData Central database.
-                Click USDA Lookup on any ingredient to search and auto-fill, or enter values manually.
+                Select items and click USDA Lookup, or enter values manually.
                 Once enriched, the Nutrition tab on every recipe calculates automatically.
               </p>
             </div>
-            <NutritionEnricher userId={userId} restaurantId={ctx.restaurant.id} />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <NutritionEnricher userId={userId} restaurantId={ctx.restaurant.id} />
+            </div>
           </div>
         )}
         {tab === 'library_import' && (

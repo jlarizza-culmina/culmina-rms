@@ -285,6 +285,8 @@ export interface LibraryIngredient {
   grams_per_recipe_unit?: number | null
   usda_fdc_id?: number | null
   nutrition_verified?: boolean
+  nutrition_updated_at?: string | null
+  nutrition_excluded?: boolean
 }
 
 export interface IngredientCostHistory {
