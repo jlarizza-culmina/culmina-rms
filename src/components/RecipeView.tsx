@@ -809,7 +809,7 @@ export default function RecipeView({
         {activeTab === 'plan' && <PlanTab recipe={recipe} isCocktail={isCocktail} onUpdateRecipe={onUpdateRecipe}
               libCookware={libCookware} libBakeware={libBakeware}
               libKitchenUtensils={libBohUtensils} libEquipment={libEquipment} />}
-        {activeTab === 'nutrition' && <NutritionTab recipe={recipe} ratio={ratio} isCocktail={isCocktail} servings={servings} />}
+        {activeTab === 'nutrition' && <NutritionTab recipe={recipe} ratio={ratio} isCocktail={isCocktail} servings={servings} library={library} />}
         {activeTab === 'shopping' && (
           <ShoppingTab recipe={recipe} ratio={ratio} checks={checks} onToggle={onToggleCheck} onClear={onClearChecks} library={library} allRecipes={allRecipes} />
         )}
@@ -1298,19 +1298,62 @@ function PlanTab({ recipe, isCocktail, onUpdateRecipe, libCookware, libBakeware,
 
 
 // ── Nutrition ─────────────────────────────────────────────────────────────────
-function NutritionTab({ recipe, ratio, isCocktail, servings }: { recipe: Recipe; ratio: number; isCocktail: boolean; servings: number }) {
-  const n = recipe.nutrition
-  if (!n) return <p className="text-xs text-[--muted] pt-2">Nutrition data not available.</p>
-  const cal = Math.round((n.calories || 0) * ratio)
-  const p = Math.round((n.protein || 0) * ratio)
-  const c = Math.round((n.carbs || 0) * ratio)
-  const f = Math.round((n.fat || 0) * ratio)
-  const fi = Math.round((n.fiber || 0) * ratio)
-  const so = Math.round((n.sodium || 0) * ratio)
+function NutritionTab({ recipe, ratio, isCocktail, servings, library }: {
+  recipe: Recipe; ratio: number; isCocktail: boolean; servings: number
+  library?: LibraryIngredient[]
+}) {
+  // Calculate from linked ingredients if possible, fall back to recipe.nutrition JSONB
+  const calculated = useMemo(() => {
+    if (!library?.length) return null
+    let calories = 0, protein = 0, carbs = 0, fat = 0, fiber = 0, sodium = 0
+    let covered = 0, total = 0
+    const UNIT_GRAMS: Record<string, number> = {
+      oz: 28.35, lb: 453.59, g: 1, kg: 1000, ml: 1, l: 1000,
+      tsp: 4.2, tbsp: 14.2, cup: 236.6, pinch: 0.3,
+      each: 100, slice: 30, sprig: 2, leaf: 0.5, clove: 3, bunch: 100,
+    }
+    for (const ing of recipe.ingredients ?? []) {
+      if (!ing.library_id) continue
+      total++
+      const lib = library.find(l => l.id === ing.library_id)
+      if (!lib || lib.calories_per_100g == null) continue
+      covered++
+      const gPerUnit = lib.grams_per_recipe_unit ?? UNIT_GRAMS[ing.unit?.toLowerCase() ?? ''] ?? 28.35
+      const factor = (ing.amount * gPerUnit) / 100
+      calories += factor * (lib.calories_per_100g ?? 0)
+      protein  += factor * (lib.protein_g_per_100g ?? 0)
+      carbs    += factor * (lib.carbs_g_per_100g ?? 0)
+      fat      += factor * (lib.fat_g_per_100g ?? 0)
+      fiber    += factor * (lib.fiber_g_per_100g ?? 0)
+      sodium   += factor * (lib.sodium_mg_per_100g ?? 0)
+    }
+    if (covered === 0) return null
+    return { calories, protein, carbs, fat, fiber, sodium, covered, total,
+      pct: total > 0 ? Math.round(covered / total * 100) : 0 }
+  }, [recipe.ingredients, library])
+
+  // Use calculated if available, else JSONB fallback
+  const src = calculated ?? recipe.nutrition
+  if (!src && !calculated) return (
+    <div className="space-y-3">
+      <p className="text-xs text-[--muted]">
+        No nutrition data yet. Enrich your ingredient library in <strong>Settings → 🥦 Nutrition</strong>
+        to automatically calculate nutrition for every recipe.
+      </p>
+    </div>
+  )
+
+  const cal = Math.round(((src as any).calories   || (src as any).calories   || 0) * ratio)
+  const p   = Math.round(((src as any).protein_g  || (src as any).protein  || 0) * ratio * 10) / 10
+  const c   = Math.round(((src as any).carbs_g    || (src as any).carbs    || 0) * ratio * 10) / 10
+  const f   = Math.round(((src as any).fat_g      || (src as any).fat      || 0) * ratio * 10) / 10
+  const fi  = Math.round(((src as any).fiber_g    || (src as any).fiber    || 0) * ratio * 10) / 10
+  const so  = Math.round(((src as any).sodium_mg  || (src as any).sodium   || 0) * ratio)
+
   const tot = p + c + f || 1
-  const pp = Math.round(p / tot * 100)
-  const cp = Math.round(c / tot * 100)
-  const fp = Math.round(f / tot * 100)
+  const pp  = Math.round(p / tot * 100)
+  const cp  = Math.round(c / tot * 100)
+  const fp  = Math.round(f / tot * 100)
 
   if (isCocktail) {
     const cd = recipe.cocktail_details
@@ -1334,48 +1377,66 @@ function NutritionTab({ recipe, ratio, isCocktail, servings }: { recipe: Recipe;
   }
 
   return (
-    <div className="flex gap-6 flex-wrap items-start">
-      <div className="bg-white rounded-xl border border-[--border] overflow-hidden min-w-[200px]">
-        <div className="px-4 py-3 border-b-[3px] border-[--text]">
-          <div className="text-xl font-bold tracking-tight text-[--text]">Nutrition Facts</div>
-          <div className="text-[10px] text-[--muted] mt-0.5">Per serving · {servings} shown</div>
+    <div className="space-y-4">
+      {/* Coverage warning */}
+      {calculated && calculated.pct < 100 && (
+        <div className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
+          <span>⚠</span>
+          <span>Based on {calculated.covered} of {calculated.total} linked ingredients ({calculated.pct}% coverage).
+            Enrich more ingredients in <strong>Settings → 🥦 Nutrition</strong> for complete data.</span>
         </div>
-        <div className="px-4 py-2.5 border-b-[5px] border-[--text] flex justify-between items-baseline">
-          <span className="text-2xl font-bold text-[--text]">{cal}</span>
-          <span className="text-[10px] text-[--muted]">Calories</span>
-        </div>
-        {[
-          { label: 'Total Fat', value: `${f}g`, bold: true, thick: true },
-          { label: 'Total Carbohydrate', value: `${c}g`, bold: true, thick: true },
-          { label: 'Dietary Fiber', value: `${fi}g`, bold: false, thick: false, indent: true },
-          { label: 'Protein', value: `${p}g`, bold: true, thick: true },
-          ...(so > 0 ? [{ label: 'Sodium', value: `${so}mg`, bold: false, thick: false }] : []),
-        ].map(row => (
-          <div key={row.label} className={`flex justify-between items-center py-1.5 text-[11px] ${row.thick ? 'border-b-[3px] border-[--text]' : 'border-b border-[--border]'} ${row.indent ? 'pl-6 pr-4' : 'px-4'}`}>
-            <span className={`text-[--text] ${row.bold ? 'font-semibold' : ''}`}>{row.label}</span>
-            <span className="font-medium text-[--text]">{row.value}</span>
-          </div>
-        ))}
-      </div>
+      )}
 
-      <div className="flex-1 min-w-[160px]">
-        <h3 className="font-serif text-sm font-medium text-[--text] mb-3">Macros</h3>
-        <div className="flex gap-3">
+      <div className="flex gap-6 flex-wrap items-start">
+        {/* Nutrition facts panel */}
+        <div className="bg-white rounded-xl border border-[--border] overflow-hidden min-w-[200px]">
+          <div className="px-4 py-3 border-b-[3px] border-[--text]">
+            <div className="text-xl font-bold tracking-tight text-[--text]">Nutrition Facts</div>
+            <div className="text-[10px] text-[--muted] mt-0.5">Per serving · {servings} shown</div>
+          </div>
+          <div className="px-4 py-2.5 border-b-[5px] border-[--text] flex justify-between items-baseline">
+            <span className="text-2xl font-bold text-[--text]">{cal}</span>
+            <span className="text-[10px] text-[--muted]">Calories</span>
+          </div>
           {[
-            { label: 'Protein', value: p, pct: pp, color: 'var(--accent)' },
-            { label: 'Carbs',   value: c, pct: cp, color: 'var(--green)' },
-            { label: 'Fat',     value: f, pct: fp, color: 'var(--blue)' },
-          ].map(m => (
-            <div key={m.label} className="flex-1">
-              <div className="text-[10px] text-[--muted] mb-1">{m.label}</div>
-              <div className="text-sm font-medium mb-1.5" style={{ color: m.color }}>{m.value}g</div>
-              <div className="h-1.5 bg-[--surface-2] rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${m.pct}%`, background: m.color }} />
-              </div>
-              <div className="text-[10px] text-[--muted] mt-1">{m.pct}%</div>
+            { label: 'Total Fat',          value: `${f}g`,   bold: true,  thick: true },
+            { label: 'Total Carbohydrate', value: `${c}g`,   bold: true,  thick: true },
+            { label: 'Dietary Fiber',      value: `${fi}g`,  bold: false, thick: false, indent: true },
+            { label: 'Protein',            value: `${p}g`,   bold: true,  thick: true },
+            ...(so > 0 ? [{ label: 'Sodium', value: `${so}mg`, bold: false, thick: false }] : []),
+          ].map(row => (
+            <div key={row.label} className={`flex justify-between items-center py-1.5 text-[11px] ${(row as any).thick ? 'border-b-[3px] border-[--text]' : 'border-b border-[--border]'} ${(row as any).indent ? 'pl-6 pr-4' : 'px-4'}`}>
+              <span className={`text-[--text] ${row.bold ? 'font-semibold' : ''}`}>{row.label}</span>
+              <span className="font-medium text-[--text]">{row.value}</span>
             </div>
           ))}
         </div>
+
+        {/* Macros chart */}
+        <div className="flex-1 min-w-[160px]">
+          <h3 className="font-serif text-sm font-medium text-[--text] mb-3">Macros</h3>
+          <div className="flex gap-3">
+            {[
+              { label: 'Protein', value: p, pct: pp, color: 'var(--accent)' },
+              { label: 'Carbs',   value: c, pct: cp, color: 'var(--green)' },
+              { label: 'Fat',     value: f, pct: fp, color: 'var(--blue)' },
+            ].map(m => (
+              <div key={m.label} className="flex-1">
+                <div className="text-[10px] text-[--muted] mb-1">{m.label}</div>
+                <div className="text-sm font-medium mb-1.5" style={{ color: m.color }}>{m.value}g</div>
+                <div className="h-1.5 bg-[--surface-2] rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${m.pct}%`, background: m.color }} />
+                </div>
+                <div className="text-[10px] text-[--muted] mt-1">{m.pct}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Source note */}
+      <div className="text-[9px] text-[--hint]">
+        {calculated ? 'Calculated from linked ingredient library data (USDA FoodData Central)' : 'From recipe nutrition data'}
       </div>
     </div>
   )

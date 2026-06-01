@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase'
 import type { Restaurant, Location, PicklistValue, DishMode, UserRole } from '@/lib/types'
 import type { AppContext } from './AppShell'
 import AIIngredientImporter from './AIIngredientImporter'
+import NutritionEnricher from './NutritionEnricher'
 
 interface Props {
   ctx: AppContext
@@ -12,7 +13,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -225,6 +226,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     { key: 'branding',     label: 'Branding' },
     { key: 'queue',          label: 'Queue' },
     { key: 'library_import', label: '✨ AI Library Import' },
+    { key: 'nutrition',      label: '🥦 Nutrition' },
     { key: 'picklists',    label: 'Picklists' },
     { key: 'entitlements', label: 'Entitlements' },
     { key: 'team',         label: 'Team' },
@@ -597,6 +599,19 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
           </div>
         )}
 
+        {tab === 'nutrition' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-[--text] mb-1">Nutrition Data</h3>
+              <p className="text-xs text-[--muted]">
+                Enrich your ingredient library with nutrition data from the USDA FoodData Central database.
+                Click USDA Lookup on any ingredient to search and auto-fill, or enter values manually.
+                Once enriched, the Nutrition tab on every recipe calculates automatically.
+              </p>
+            </div>
+            <NutritionEnricher userId={userId} restaurantId={ctx.restaurant.id} />
+          </div>
+        )}
         {tab === 'library_import' && (
           <div className="space-y-4">
             <div>

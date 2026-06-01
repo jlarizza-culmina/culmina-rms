@@ -275,6 +275,16 @@ export interface LibraryIngredient {
   is_active: boolean
   created_at?: string
   vendor_name?: string
+  // Nutrition (per 100g, from USDA FoodData Central)
+  calories_per_100g?: number | null
+  protein_g_per_100g?: number | null
+  carbs_g_per_100g?: number | null
+  fat_g_per_100g?: number | null
+  fiber_g_per_100g?: number | null
+  sodium_mg_per_100g?: number | null
+  grams_per_recipe_unit?: number | null
+  usda_fdc_id?: number | null
+  nutrition_verified?: boolean
 }
 
 export interface IngredientCostHistory {
