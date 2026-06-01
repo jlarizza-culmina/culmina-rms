@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Restaurant, Location, PicklistValue, DishMode, UserRole } from '@/lib/types'
 import type { AppContext } from './AppShell'
+import AIIngredientImporter from './AIIngredientImporter'
 
 interface Props {
   ctx: AppContext
@@ -11,7 +12,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -216,11 +217,14 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     })
   }
 
+  const [importSuccess, setImportSuccess] = useState<number | null>(null)
+
   const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'general',      label: 'General' },
     { key: 'locations',    label: 'Locations' },
     { key: 'branding',     label: 'Branding' },
-    { key: 'queue',        label: 'Queue' },
+    { key: 'queue',          label: 'Queue' },
+    { key: 'library_import', label: '✨ AI Library Import' },
     { key: 'picklists',    label: 'Picklists' },
     { key: 'entitlements', label: 'Entitlements' },
     { key: 'team',         label: 'Team' },
@@ -590,6 +594,30 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
               <div className="text-xs text-[--muted]">{ctx.currentUser.display_name}</div>
               <div className="text-[11px] text-[--accent] mt-1 capitalize">{ctx.role} role</div>
             </div>
+          </div>
+        )}
+
+        {tab === 'library_import' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-[--text] mb-1">AI Ingredient Library Import</h3>
+              <p className="text-xs text-[--muted]">
+                Enter a food or beverage category and the AI generates a list of ingredients for your library.
+                Review and edit the grid, then import only the items you need.
+                Items already in your library are shown greyed out and will not be re-imported.
+              </p>
+            </div>
+            {importSuccess !== null && (
+              <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                ✓ {importSuccess} ingredient{importSuccess !== 1 ? 's' : ''} added to your library.
+                <button onClick={() => setImportSuccess(null)} className="ml-auto text-green-500 hover:text-green-700">✕</button>
+              </div>
+            )}
+            <AIIngredientImporter
+              userId={userId}
+              restaurantId={ctx.restaurant.id}
+              onImported={count => setImportSuccess(count)}
+            />
           </div>
         )}
       </div>

@@ -811,7 +811,7 @@ export default function RecipeView({
               libKitchenUtensils={libBohUtensils} libEquipment={libEquipment} />}
         {activeTab === 'nutrition' && <NutritionTab recipe={recipe} ratio={ratio} isCocktail={isCocktail} servings={servings} />}
         {activeTab === 'shopping' && (
-          <ShoppingTab recipe={recipe} ratio={ratio} checks={checks} onToggle={onToggleCheck} onClear={onClearChecks} />
+          <ShoppingTab recipe={recipe} ratio={ratio} checks={checks} onToggle={onToggleCheck} onClear={onClearChecks} library={library} allRecipes={allRecipes} />
         )}
         {activeTab === 'costing' && (
           <CostingTab
@@ -1382,25 +1382,68 @@ function NutritionTab({ recipe, ratio, isCocktail, servings }: { recipe: Recipe;
 }
 
 // ── Shopping / Bar Stock ──────────────────────────────────────────────────────
-function ShoppingTab({ recipe, ratio, checks, onToggle, onClear }: {
+function ShoppingTab({ recipe, ratio, checks, onToggle, onClear, library, allRecipes }: {
   recipe: Recipe; ratio: number; checks: Set<string>
   onToggle: (id: string) => void; onClear: () => void
+  library?: LibraryIngredient[]; allRecipes?: Recipe[]
 }) {
-  const cats: Record<string, typeof recipe.ingredients> = {}
-  recipe.ingredients.forEach(i => {
-    const c = i.category || 'other'
+  const [copied, setCopied] = useState(false)
+
+  // Expand component recipes into their ingredients
+  const expandedComponents = useMemo(() => {
+    if (!allRecipes || !recipe.components) return []
+    return recipe.components.flatMap(comp => {
+      const sub = allRecipes.find(r => r.id === comp.recipe_id)
+      if (!sub) return []
+      return (sub.ingredients ?? []).map(i => ({
+        ...i,
+        id: `${comp.id}:${i.id}`,
+        _fromComponent: comp.recipe_name,
+      }))
+    })
+  }, [recipe.components, allRecipes])
+
+  const allIngredients = useMemo(() => [
+    ...recipe.ingredients,
+    ...expandedComponents,
+  ], [recipe.ingredients, expandedComponents])
+
+  // Group by library category, fall back to ingredient.category
+  const cats: Record<string, typeof allIngredients> = {}
+  allIngredients.forEach(i => {
+    const lib = library?.find(l => l.id === i.library_id)
+    const c = lib?.category || i.category || 'other'
     ;(cats[c] = cats[c] ?? []).push(i)
   })
   const ordered = CAT_ORDER.filter(c => cats[c])
   Object.keys(cats).forEach(c => { if (!CAT_ORDER.includes(c)) ordered.push(c) })
 
-  const total = recipe.ingredients.length
-  const chkN = checks.size
-  const pct = total > 0 ? Math.round(chkN / total * 100) : 0
+  const total = allIngredients.length
+  const chkN  = checks.size
+  const pct   = total > 0 ? Math.round(chkN / total * 100) : 0
+
+  function copyList() {
+    const lines: string[] = [`${recipe.name} — Shopping List`, '']
+    ordered.forEach(cat => {
+      lines.push((CAT_LABELS[cat] ?? cat).toUpperCase())
+      cats[cat].forEach(i => {
+        const lib = library?.find(l => l.id === i.library_id)
+        const name = lib?.name || i.name
+        const amt  = scaleAmt(i.amount, ratio)
+        const unit = i.unit || ''
+        const from = (i as any)._fromComponent ? ` (from ${(i as any)._fromComponent})` : ''
+        lines.push(`  ${amt}${unit ? ' ' + unit : ''} ${name}${from}`)
+      })
+      lines.push('')
+    })
+    navigator.clipboard.writeText(lines.join('\n'))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   return (
     <div>
-      {/* Progress */}
+      {/* Header row */}
       <div className="flex items-center gap-3 mb-5">
         <div className="flex-1 h-1.5 bg-[--surface-2] rounded-full overflow-hidden">
           <div className="h-full bg-[--green] rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
@@ -1409,7 +1452,18 @@ function ShoppingTab({ recipe, ratio, checks, onToggle, onClear }: {
         {chkN > 0 && (
           <button onClick={onClear} className="text-xs text-[--muted] hover:text-[--text] underline">Clear</button>
         )}
+        <button onClick={copyList}
+          className="text-xs px-2.5 py-1 border border-[--border-2] text-[--muted] hover:text-[--accent] hover:border-[--accent] rounded-lg transition-colors flex items-center gap-1">
+          {copied ? '✓ Copied' : '📋 Copy list'}
+        </button>
       </div>
+
+      {/* Component expansion notice */}
+      {expandedComponents.length > 0 && (
+        <div className="mb-4 text-[11px] text-purple-600 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+          ⚙ Includes {recipe.components?.length} component recipe{recipe.components!.length !== 1 ? 's' : ''} — {expandedComponents.length} additional ingredients expanded
+        </div>
+      )}
 
       {/* Categories */}
       <div className="space-y-5">
@@ -1419,17 +1473,21 @@ function ShoppingTab({ recipe, ratio, checks, onToggle, onClear }: {
               {CAT_LABELS[cat] ?? cat}
             </div>
             {cats[cat].map(ing => {
-              const ck = checks.has(ing.id)
+              const ck  = checks.has(ing.id)
+              const lib = library?.find(l => l.id === ing.library_id)
+              const displayName = lib?.name || ing.name
+              const fromComp = (ing as any)._fromComponent
               return (
-                <div
-                  key={ing.id}
-                  onClick={() => onToggle(ing.id)}
-                  className="flex items-center gap-2.5 py-1.5 cursor-pointer group"
-                >
+                <div key={ing.id} onClick={() => onToggle(ing.id)}
+                  className="flex items-center gap-2.5 py-1.5 cursor-pointer group">
                   <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-all ${ck ? 'bg-[--green] border-[--green]' : 'border-[--border-2] group-hover:border-[--muted]'}`}>
                     {ck && <span className="text-white text-[9px]">✓</span>}
                   </div>
-                  <span className={`text-xs flex-1 transition-colors ${ck ? 'line-through text-[--hint]' : 'text-[--text]'}`}>{ing.name}</span>
+                  <span className={`text-xs flex-1 transition-colors ${ck ? 'line-through text-[--hint]' : 'text-[--text]'}`}>
+                    {displayName}
+                    {fromComp && <span className="text-[9px] text-purple-400 ml-1">(⚙ {fromComp})</span>}
+                    {ing.is_garnish && <span className="text-[9px] text-amber-400 ml-1">garnish</span>}
+                  </span>
                   <span className={`text-[11px] flex-shrink-0 transition-colors ${ck ? 'text-[--hint]' : 'text-[--muted]'}`}>
                     {scaleAmt(ing.amount, ratio)}{ing.unit ? ` ${ing.unit}` : ''}
                   </span>
@@ -1439,6 +1497,10 @@ function ShoppingTab({ recipe, ratio, checks, onToggle, onClear }: {
           </div>
         ))}
       </div>
+
+      {allIngredients.length === 0 && (
+        <div className="text-center py-8 text-xs text-[--hint]">No ingredients yet.</div>
+      )}
     </div>
   )
 }
