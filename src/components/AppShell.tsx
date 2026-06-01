@@ -260,7 +260,7 @@ export default function AppShell({ user }: Props) {
       <div className="h-screen flex flex-col overflow-hidden">
         <BrandStyle />
         <TopBar />
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden h-full">
           <SettingsPage
             ctx={ctx}
             userId={user.id}
