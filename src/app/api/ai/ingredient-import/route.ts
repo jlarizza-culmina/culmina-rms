@@ -34,13 +34,26 @@ Return ONLY a valid JSON array, no other text, no markdown.`,
   })
 
   const data = await res.json()
+
+  // Handle Anthropic API errors
+  if (data.error) {
+    return NextResponse.json({ error: data.error.message ?? 'Anthropic API error' }, { status: 500 })
+  }
+
   const text = data.content?.[0]?.text ?? ''
 
   try {
-    const clean = text.replace(/```json|```/g, '').trim()
+    // Strip code fences if present
+    let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+    // Extract the JSON array — find the outermost [ ... ]
+    const start = clean.indexOf('[')
+    const end   = clean.lastIndexOf(']')
+    if (start === -1 || end === -1) throw new Error('No JSON array found in AI response')
+    clean = clean.slice(start, end + 1)
     const ingredients = JSON.parse(clean)
     return NextResponse.json({ ingredients })
-  } catch {
-    return NextResponse.json({ error: 'AI returned invalid JSON', raw: text }, { status: 500 })
+  } catch (e) {
+    console.error('[ai/ingredient-import] parse error:', e, '\nRaw:', text.slice(0, 500))
+    return NextResponse.json({ error: `AI returned invalid JSON: ${e}` }, { status: 500 })
   }
 }
