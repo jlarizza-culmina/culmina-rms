@@ -1,19 +1,29 @@
 // src/app/api/ai/ingredient-import/route.ts
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
-
-const client = new Anthropic() // uses ANTHROPIC_API_KEY automatically
 
 export async function POST(req: Request) {
   const { category } = await req.json()
   if (!category?.trim()) {
     return NextResponse.json({ error: 'Category required' }, { status: 400 })
   }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set in environment' }, { status: 500 })
+  }
+
   try {
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      system: `You are a professional chef and restaurant supply expert. When given a food/beverage category, return a JSON array of ingredients for a professional restaurant kitchen. Each item:
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type':      'application/json',
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        system: `You are a professional chef and restaurant supply expert. When given a food/beverage category, return a JSON array of ingredients for a professional restaurant kitchen. Each item:
 {
   "name": "Category - Descriptor (detail)",
   "category": "Bar|Coffee & Beverage|Dairy & Eggs|Fruits|Herbs & Spices|Oils & Vinegars|Pantry|Pasta & Grains|Proteins|Stocks & Sauces|Vegetables",
@@ -27,10 +37,17 @@ export async function POST(req: Request) {
 }
 Naming: always "Category - Descriptor" e.g. "Pork - Guanciale (cured)".
 Return ONLY a valid JSON array, no markdown, no preamble.`,
-      messages: [{ role: 'user', content: `Generate a comprehensive ingredient list for: ${category.trim()}` }],
+        messages: [{ role: 'user', content: `Generate a comprehensive ingredient list for: ${category.trim()}` }],
+      }),
     })
 
-    const text = msg.content[0].type === 'text' ? msg.content[0].text : ''
+    if (!res.ok) {
+      const err = await res.text()
+      return NextResponse.json({ error: `Anthropic API error ${res.status}: ${err}` }, { status: 500 })
+    }
+
+    const data = await res.json()
+    const text = data.content?.[0]?.text ?? ''
     const start = text.indexOf('[')
     const end   = text.lastIndexOf(']')
     if (start === -1 || end === -1) throw new Error('No JSON array in response')
