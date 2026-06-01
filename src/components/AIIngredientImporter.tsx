@@ -50,39 +50,14 @@ export default function AIIngredientImporter({ userId, restaurantId, existingNam
     setLoading(true); setError(''); setRows([])
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/ai/ingredient-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4000,
-          system: `You are a professional chef and restaurant supply expert. When given a food/beverage category, return a JSON array of ingredients for a professional restaurant kitchen. Each ingredient must follow this exact format:
-{
-  "name": "Ingredient - Descriptor (detail)",
-  "category": "one of: Bar, Coffee & Beverage, Dairy & Eggs, Fruits, Herbs & Spices, Oils & Vinegars, Pantry, Pasta & Grains, Proteins, Stocks & Sauces, Vegetables",
-  "sub_category": "specific sub-category or empty string",
-  "brand": "specific brand if applicable, else empty string",
-  "purchase_unit": "how it is purchased (e.g. lb, each, case/24, 750ml bottle)",
-  "purchase_unit_cost": number (approximate USD cost),
-  "recipe_unit": "unit used in recipes (oz, g, each, tsp, etc)",
-  "unit_conversion": number (how many recipe units per purchase unit),
-  "notes": "brief sourcing or preparation note"
-}
-Naming convention: always "Category - Descriptor (detail)" e.g. "Pork - Guanciale (cured)", "Cheese - Pecorino Romano", "Oil - Truffle (white)".
-Return ONLY a valid JSON array, no other text, no markdown.`,
-          messages: [{ role: 'user', content: `Generate a comprehensive ingredient list for: ${category.trim()}` }],
-        }),
+        body: JSON.stringify({ category: category.trim() }),
       })
-
       const data = await res.json()
-      const text = data.content?.[0]?.text ?? ''
-      let parsed: any[]
-      try {
-        const clean = text.replace(/```json|```/g, '').trim()
-        parsed = JSON.parse(clean)
-      } catch {
-        throw new Error('AI returned invalid JSON. Try again.')
-      }
+      if (data.error) throw new Error(data.error)
+      const parsed: any[] = data.ingredients
 
       const generated: LibRow[] = parsed.map((item: any, i: number) => {
         const nameKey = (item.name ?? '').toLowerCase().trim()
