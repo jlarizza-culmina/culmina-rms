@@ -51,7 +51,7 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
   const [page,        setPage]        = useState(0)
   const [bulkRunning, setBulkRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{done: number; total: number} | null>(null)
-  const PAGE = 25
+  const PAGE = 50
 
   const load = useCallback(async () => {
     if (!restaurantId) return
@@ -182,7 +182,7 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
   const pct = totalAll > 0 ? Math.round(totalEnrich / totalAll * 100) : 0
 
   return (
-    <div className="flex flex-col h-full min-h-0 space-y-4">
+    <div className="space-y-4">
 
       {/* Coverage bar */}
       <div className="bg-white rounded-xl border border-[--border] p-4 flex-shrink-0">
@@ -229,8 +229,8 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
         )}
       </div>
 
-      {/* List — scrollable */}
-      <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-1.5">
+      {/* List */}
+      <div className="space-y-1.5">
         {loading ? (
           <div className="text-xs text-[--hint] text-center py-12">Loading…</div>
         ) : items.length === 0 ? (

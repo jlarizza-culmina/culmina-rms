@@ -251,7 +251,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 max-w-3xl">
+      <div className="flex-1 overflow-y-auto px-6 py-5 max-w-4xl">
 
         {/* ── General ── */}
         {tab === 'general' && (
@@ -600,8 +600,8 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
         )}
 
         {tab === 'nutrition' && (
-          <div className="flex flex-col h-full space-y-4">
-            <div className="flex-shrink-0">
+          <div className="space-y-4">
+            <div>
               <h3 className="text-sm font-medium text-[--text] mb-1">Nutrition Data</h3>
               <p className="text-xs text-[--muted]">
                 Enrich your ingredient library with nutrition data from the USDA FoodData Central database.
@@ -609,9 +609,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
                 Once enriched, the Nutrition tab on every recipe calculates automatically.
               </p>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <NutritionEnricher userId={userId} restaurantId={ctx.restaurant.id} />
-            </div>
+            <NutritionEnricher userId={userId} restaurantId={ctx.restaurant.id} />
           </div>
         )}
         {tab === 'library_import' && (
