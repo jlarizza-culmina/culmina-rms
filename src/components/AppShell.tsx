@@ -301,6 +301,7 @@ export default function AppShell({ user }: Props) {
             user={user}
             restaurantId={restaurant.id}
             ctx={ctx}
+            onSubPageChange={title => setSubPageTitle(title)}
             onBreadcrumbSegmentClick={handler => setBreadcrumbHandler(() => handler)}
           />
         </div>
@@ -320,8 +321,6 @@ export default function AppShell({ user }: Props) {
             userId={user.id}
             restaurantId={restaurant.id}
             locationId={primaryLocation?.id}
-            recipes={[]}
-            library={[]}
           />
         </div>
       </div>
