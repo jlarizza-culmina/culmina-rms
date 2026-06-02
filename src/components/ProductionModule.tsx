@@ -103,6 +103,7 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
   const [loading,      setLoading]      = useState(true)
   const [saving,       setSaving]       = useState(false)
   const [saved,        setSaved]        = useState(false)
+  const [recentDates,  setRecentDates]  = useState<string[]>([])
 
   // ── Load today's menu + existing production plan ──────────────
   const load = useCallback(async () => {
@@ -173,6 +174,12 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
       })))
     }
 
+    // Load recent past production dates for quick nav
+    const { data: pastPlans } = await supabase
+      .from('daily_production').select('production_date')
+      .eq('restaurant_id', restaurantId)
+      .order('production_date', { ascending: false }).limit(10)
+    setRecentDates((pastPlans ?? []).map((p: any) => p.production_date))
     setLoading(false)
   }, [restaurantId, userId, date])
 
@@ -273,29 +280,39 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
   // ── Shopping list ─────────────────────────────────────────────
   const shoppingList = useMemo(() => {
-    const agg: Map<string, { name: string; amount: number; unit: string; libName?: string }> = new Map()
-    for (const item of items.filter(i => i.planned_portions > 0)) {
-      const recipe = item.recipe
-      if (!recipe) continue
-      const ratio = item.planned_portions / (recipe.base_servings || 1)
-      for (const ing of recipe.ingredients ?? []) {
+    const agg: Map<string, { name: string; amount: number; unit: string }> = new Map()
+
+    function addIngredients(recipeObj: Recipe | undefined, ratio: number) {
+      if (!recipeObj) return
+      for (const ing of recipeObj.ingredients ?? []) {
         if (!ing) continue
-        const lib = library.find(l => l.id === ing.library_id)
+        const lib = library.find((l: any) => l.id === ing.library_id)
         const key = lib?.id ?? ing.name.toLowerCase()
         const name = lib?.name ?? ing.name
-        const existing = agg.get(key)
         const amount = (ing.amount || 0) * ratio
-        if (existing) {
-          existing.amount += amount
-        } else {
-          agg.set(key, { name, amount, unit: lib?.recipe_unit ?? ing.unit ?? '', libName: lib?.name })
+        const existing = agg.get(key)
+        if (existing) { existing.amount += amount }
+        else { agg.set(key, { name, amount, unit: lib?.recipe_unit ?? ing.unit ?? '' }) }
+      }
+      // Expand component sub-recipes
+      for (const comp of recipeObj.components ?? []) {
+        const compRecipe = recipes.find((r: any) => r.id === comp.recipe_id)
+        if (compRecipe) {
+          const compRatio = (comp.amount || 1) / (compRecipe.base_servings || 1) * ratio
+          addIngredients(compRecipe, compRatio)
         }
       }
     }
+
+    for (const item of items.filter(i => i.planned_portions > 0)) {
+      const ratio = item.planned_portions / (item.recipe?.base_servings || 1)
+      addIngredients(item.recipe, ratio)
+    }
+
     return Array.from(agg.values())
       .filter((i: any) => i.amount > 0)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
-  }, [items, library])
+  }, [items, library, recipes])
 
   // ── T-minus schedule ──────────────────────────────────────────
   const schedule = useMemo((): ScheduleTask[] => {
@@ -339,22 +356,127 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
   const totalPortions = items.reduce((s, i) => s + (i.planned_portions || 0), 0)
 
+  // ── Print functions ───────────────────────────────────────────
+  function printPullList() {
+    const rows = shoppingList.map((i: any) =>
+      `<tr><td>${i.name}</td><td style="text-align:right;padding-left:24px">${Math.round(i.amount * 10)/10} ${i.unit}</td><td style="padding-left:24px">☐</td></tr>`
+    ).join('')
+    const portionSummary = items.filter(i => i.planned_portions > 0)
+      .map((i: any) => `${i.recipe?.name ?? i.recipe_id}: ${i.planned_portions} portions`)
+      .join('<br>')
+    openPrint(`
+      <h2 style="margin:0 0 4px">Pull List — ${date}</h2>
+      <p style="margin:0 0 16px;font-size:12px;color:#666">${totalPortions} total portions · ${shoppingList.length} ingredients</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid #000">
+          <th style="text-align:left;padding-bottom:4px">Ingredient</th>
+          <th style="text-align:right;padding-left:24px">Qty</th>
+          <th style="padding-left:24px">✓</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <hr style="margin:24px 0">
+      <p style="font-size:11px;color:#666"><strong>Portions:</strong><br>${portionSummary}</p>
+    `)
+  }
+
+  function printSchedule() {
+    const rows = schedule.map((t: any, i: number) => {
+      const phaseColors: Record<string, string> = {
+        cook: '#fee2e2', mise: '#dbeafe', plate: '#dcfce7', bar: '#f3e8ff', prep: '#fef3c7'
+      }
+      const bg = phaseColors[t.phase] ?? '#f5f5f5'
+      return `<tr style="background:${i%2===0?'#fff':'#fafafa'}">
+        <td style="padding:6px 8px;font-weight:600">${t.latest_start_str}</td>
+        <td style="padding:6px 8px">${t.recipe_name}</td>
+        <td style="padding:6px 8px;color:#555">${t.step_title}</td>
+        <td style="padding:6px 8px"><span style="background:${bg};padding:2px 8px;border-radius:12px;font-size:11px">${t.phase}</span></td>
+        <td style="padding:6px 8px;text-align:right">${t.duration_min > 0 ? t.duration_min+'min' : ''}</td>
+        <td style="padding:6px 8px;text-align:center">☐</td>
+      </tr>`
+    }).join('')
+    openPrint(`
+      <h2 style="margin:0 0 4px">Prep Schedule — ${date}</h2>
+      <p style="margin:0 0 16px;font-size:12px;color:#666">${schedule.length} tasks</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid #000;font-size:11px;text-transform:uppercase;letter-spacing:0.05em">
+          <th style="text-align:left;padding:4px 8px">Start</th>
+          <th style="text-align:left;padding:4px 8px">Recipe</th>
+          <th style="text-align:left;padding:4px 8px">Step</th>
+          <th style="text-align:left;padding:4px 8px">Phase</th>
+          <th style="text-align:right;padding:4px 8px">Duration</th>
+          <th style="padding:4px 8px">✓</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `)
+  }
+
+  function openPrint(body: string) {
+    const w = window.open('', '_blank', 'width=800,height=900')
+    if (!w) return
+    w.document.write(`<!DOCTYPE html><html><head>
+      <title>Culmina Production — ${date}</title>
+      <style>
+        body { font-family: Georgia, serif; padding: 32px; color: #1a1a1a; max-width: 800px; margin: 0 auto; }
+        table { page-break-inside: auto; }
+        tr { page-break-inside: avoid; }
+        @media print { body { padding: 0; } }
+      </style>
+    </head><body>${body}</body></html>`)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 300)
+  }
+
   if (loading) return <div className="flex items-center justify-center h-full text-[--hint] text-sm">Loading production plan…</div>
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="bg-white border-b border-[--border] px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h1 className="font-serif text-xl font-medium text-[--text]">Production</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Quick date buttons */}
+            <div className="flex rounded-lg border border-[--border-2] overflow-hidden text-xs">
+              {[['Today', today()], ['Tomorrow', tomorrow()]].map(([label, val]) => (
+                <button key={label} onClick={() => setDate(val)}
+                  className={`px-3 py-1.5 transition-colors ${date === val ? 'bg-[--accent] text-white' : 'bg-white text-[--muted] hover:bg-[--surface-2]'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <input type="date" value={date}
               onChange={e => setDate(e.target.value)}
               className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent]" />
+            {/* Past plans */}
+            {recentDates.filter(d => d !== date).length > 0 && (
+              <select value="" onChange={e => e.target.value && setDate(e.target.value)}
+                className="text-xs border border-[--border-2] rounded-lg px-2 py-1.5 bg-white outline-none focus:border-[--accent] text-[--muted]">
+                <option value="">📅 Past plans…</option>
+                {recentDates.filter(d => d !== date).map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            )}
             <button onClick={save} disabled={saving}
-              className="px-4 py-2 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] disabled:opacity-50 flex items-center gap-1.5">
-              {saving ? '…' : saved ? '✓ Saved' : '💾 Save plan'}
+              className="px-4 py-2 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">
+              {saving ? '…' : saved ? '✓ Saved' : '💾 Save'}
             </button>
+            {/* Print buttons */}
+            {tab === 'plan' && shoppingList.length > 0 && (
+              <button onClick={() => printPullList()}
+                className="px-3 py-2 border border-[--border-2] text-[--muted] text-xs rounded-lg hover:bg-[--surface-2]">
+                🖨 Print pull list
+              </button>
+            )}
+            {tab === 'schedule' && schedule.length > 0 && (
+              <button onClick={() => printSchedule()}
+                className="px-3 py-2 border border-[--border-2] text-[--muted] text-xs rounded-lg hover:bg-[--surface-2]">
+                🖨 Print schedule
+              </button>
+            )}
           </div>
         </div>
         {/* Tabs */}
