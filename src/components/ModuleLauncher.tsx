@@ -142,19 +142,10 @@ export default function ModuleLauncher({ ctx, onNavigate, canSeeCosting, isAdmin
           <button
             key={m.module}
             onClick={() => onNavigate(m.module, m.label)}
-            disabled={m.module === 'menus'}
-            className={`group relative bg-white rounded-2xl border border-[--border] p-5 text-left transition-all
-              ${m.module === 'menus'
-                ? 'opacity-40 cursor-not-allowed'
-                : 'hover:border-[--border-2] hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
-              }`}
+            disabled={false}
+            className="group relative bg-white rounded-2xl border border-[--border] p-5 text-left transition-all hover:border-[--border-2] hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
           >
-            {/* Coming soon badge */}
-            {m.module === 'menus' && (
-              <span className="absolute top-2 right-2 text-[9px] font-semibold uppercase tracking-wide text-[--hint] bg-[--surface-2] px-1.5 py-0.5 rounded-full">
-                Soon
-              </span>
-            )}
+            {/* Coming soon badge removed - menus now live */}
 
             {/* Icon */}
             <div
