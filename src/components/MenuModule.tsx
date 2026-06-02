@@ -147,20 +147,33 @@ export default function MenuModule({ userId, restaurantId, locationId }: Props) 
 
   // Add item to current version
   async function addItem(recipeId: string, section: string, price: number) {
-    if (!activeVersion) return
+    if (!activeMenu) return
     const recipe = recipes.find(r => r.id === recipeId)
     if (!recipe) return
+
+    // Auto-create version 1 if this menu has never been edited
+    let version = activeVersion
+    if (!version) {
+      const { data: newVer } = await supabase
+        .from('menu_versions')
+        .insert({ menu_id: activeMenu.id, version_number: 1, is_current: true, is_published: false, notes: 'Initial version' })
+        .select().single()
+      if (!newVer) return
+      version = newVer
+      setVersions(prev => [...prev, newVer])
+    }
+
     const isPrinted = !pendingNotPrinted
     const maxSort = Math.max(0, ...activeItems.filter(i => i.section === section && i.is_printed === isPrinted).map(i => i.sort_order))
     const { data } = await supabase.from('menu_version_items').insert({
-      menu_version_id: activeVersion.id,
+      menu_version_id: version.id,
       recipe_id: recipeId,
       section: isPrinted ? (section || 'General') : 'NOT PRINTED',
       sort_order: maxSort + 1,
       display_name: null,
       description: null,
       price,
-      show_price: false,
+      show_price: true,
       is_available: true,
       is_printed: isPrinted,
     }).select().single()
