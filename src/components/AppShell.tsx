@@ -7,8 +7,7 @@ import OnboardingWizard from './OnboardingWizard'
 import ModuleLauncher from './ModuleLauncher'
 import RecipeApp from './RecipeApp'
 import LibraryModule from './LibraryModule'
-import ProductionPlanner from './ProductionPlanner'
-import TMinusSchedule from './TMinusSchedule'
+import ProductionModule from './ProductionModule'
 import AnalyticsModule from './AnalyticsModule'
 import WaitlistModule from './WaitlistModule'
 import MenuModule from './MenuModule'
@@ -352,25 +351,18 @@ export default function AppShell({ user }: Props) {
     )
   }
 
-  // ── Production ─────────────────────────────────────────────
-  if (module === 'production') {
+  // ── Production + Schedule (unified module) ──────────────────
+  if (module === 'production' || module === 'schedule') {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-hidden flex flex-col">
-          <ProductionPlanner recipes={[]} library={[]} vendors={[]} userId={user.id} />
-        </div>
-      </div>
-    )
-  }
-
-  // ── Schedule ───────────────────────────────────────────────
-  if (module === 'schedule') {
-    return (
-      <div className="h-screen flex flex-col overflow-hidden">
-        <TopBar />
-        <div className="flex-1 overflow-hidden flex flex-col">
-          <TMinusSchedule recipes={[]} userId={user.id} />
+          <ProductionModule
+            userId={user.id}
+            restaurantId={restaurant.id}
+            locationId={locations[0]?.id}
+          />
         </div>
       </div>
     )
