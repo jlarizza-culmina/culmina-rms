@@ -103,6 +103,7 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
   const [loading,      setLoading]      = useState(true)
   const [saving,       setSaving]       = useState(false)
   const [saved,        setSaved]        = useState(false)
+  const [saveError,    setSaveError]    = useState<string | null>(null)
   const [recentDates,  setRecentDates]  = useState<string[]>([])
 
   // ── Load today's menu + existing production plan ──────────────
@@ -163,14 +164,29 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
       setProduction(prod)
       const { data: pItems } = await supabase
         .from('production_items').select('*').eq('production_id', prod.id)
-      setItems((pItems ?? []).map((i: any) => ({
-        ...i, recipe: allRecipes.find((r: any) => r.id === i.recipe_id),
-      })))
+
+      // Merge: all menu items visible, saved portions overlaid
+      const portionMap = new Map(
+        (pItems ?? []).map((p: any) => [`${p.recipe_id}-${p.menu_type}`, p])
+      )
+      setItems(menuItems.map((mi: any) => {
+        const saved: any = portionMap.get(`${mi.recipe_id}-${mi.menu_type}`)
+        return {
+          id:               saved?.id,
+          recipe_id:        mi.recipe_id,
+          recipe:           allRecipes.find((r: any) => r.id === mi.recipe_id),
+          menu_type:        mi.menu_type,
+          planned_portions: saved?.planned_portions ?? 0,
+          notes:            saved?.notes ?? '',
+        }
+      }))
     } else {
-      // Pre-populate items from menu
       setItems(menuItems.map((mi: any) => ({
-        recipe_id: mi.recipe_id, recipe: allRecipes.find((r: any) => r.id === mi.recipe_id),
-        menu_type: mi.menu_type, planned_portions: 0, notes: '',
+        recipe_id:        mi.recipe_id,
+        recipe:           allRecipes.find((r: any) => r.id === mi.recipe_id),
+        menu_type:        mi.menu_type,
+        planned_portions: 0,
+        notes:            '',
       })))
     }
 
@@ -270,10 +286,14 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
       }
 
       setProduction(prev => ({ ...prev, id: prod.id }))
+      setSaveError(null)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-    } catch (e) {
+      // Reload to confirm saved state
+      await load()
+    } catch (e: any) {
       console.error('[production save]', e)
+      setSaveError(String(e?.message ?? e))
     }
     setSaving(false)
   }
@@ -464,6 +484,11 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
               className="px-4 py-2 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">
               {saving ? '…' : saved ? '✓ Saved' : '💾 Save'}
             </button>
+            {saveError && (
+              <span className="text-[11px] text-red-500 max-w-[200px] truncate" title={saveError}>
+                ✕ {saveError}
+              </span>
+            )}
             {/* Print buttons */}
             {tab === 'plan' && shoppingList.length > 0 && (
               <button onClick={() => printPullList()}
