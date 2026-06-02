@@ -194,7 +194,7 @@ export default function AppShell({ user }: Props) {
           {moduleTitle && (<>
             <span className="text-[--hint]">›</span>
             {subPageTitle ? (
-              <button onClick={() => setSubPageTitle('')}
+              <button onClick={() => { setSubPageTitle(''); breadcrumbHandler?.(-1) }}
                 className="text-[--muted] hover:text-[--text] transition-colors truncate max-w-[120px]">
                 {moduleTitle}
               </button>

@@ -100,20 +100,23 @@ export default function CostingTab({ recipe, servings, library, vendors, userId,
   const unlinkedCount = recipe.ingredients.length - linkedCount
   const target        = recipe.target_food_cost_pct
 
-  // Link ingredient to library entry
+  // Link ingredient to library entry — overwrites name with canonical library name
   async function linkIngredient(ingredientId: string, libraryId: string | null) {
+    const libItem = libraryId ? library.find(l => l.id === libraryId) : null
     const updated = recipe.ingredients.map(i =>
-      i.id === ingredientId ? { ...i, library_id: libraryId } : i
+      i.id === ingredientId
+        ? { ...i, library_id: libraryId, ...(libItem ? { name: libItem.name } : {}) }
+        : i
     )
     await onUpdateRecipe(recipe.id, { ingredients: updated })
   }
 
-  // Bulk: link all ingredients that have a clear suggestion
+  // Bulk: link all ingredients that have a clear suggestion — also overwrites names
   async function linkAllSuggestions() {
     const updated = recipe.ingredients.map(i => {
       if (i.library_id) return i
       const suggestion = suggestMatch(i.name)
-      return suggestion ? { ...i, library_id: suggestion.id } : i
+      return suggestion ? { ...i, library_id: suggestion.id, name: suggestion.name } : i
     })
     await onUpdateRecipe(recipe.id, { ingredients: updated })
   }

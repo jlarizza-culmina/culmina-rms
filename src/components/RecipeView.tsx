@@ -1184,10 +1184,32 @@ function PlanTab({ recipe, isCocktail, onUpdateRecipe, libCookware, libBakeware,
         {recipe.steps.map((step, i) => {
           const meta = PHASE_META[step.phase ?? 'cook']
           return (
-            <div key={step.id} className="bg-white rounded-xl border border-[--border] p-3.5">
+            <div key={step.id}
+              draggable
+              onDragStart={e => { e.dataTransfer.setData('stepId', step.id); e.currentTarget.style.opacity = '0.4' }}
+              onDragEnd={e => { e.currentTarget.style.opacity = '1' }}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onDragLeave={e => { e.currentTarget.style.borderColor = '' }}
+              onDrop={e => {
+                e.preventDefault()
+                e.currentTarget.style.borderColor = ''
+                const fromId = e.dataTransfer.getData('stepId')
+                if (fromId === step.id) return
+                const steps = [...recipe.steps]
+                const fromIdx = steps.findIndex(s => s.id === fromId)
+                const toIdx   = steps.findIndex(s => s.id === step.id)
+                const [moved] = steps.splice(fromIdx, 1)
+                steps.splice(toIdx, 0, moved)
+                onUpdateRecipe(recipe.id, { steps })
+              }}
+              className="bg-white rounded-xl border border-[--border] p-3.5 cursor-move transition-colors">
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 min-w-6 rounded-full bg-[--accent-light] text-[--accent] text-[11px] font-semibold flex items-center justify-center flex-shrink-0 mt-1">
-                  {i + 1}
+                {/* Drag handle + step number */}
+                <div className="flex flex-col items-center gap-0.5 flex-shrink-0 mt-1">
+                  <div className="text-[--hint] text-[10px] leading-none">⠿</div>
+                  <div className="w-6 h-6 rounded-full bg-[--accent-light] text-[--accent] text-[11px] font-semibold flex items-center justify-center">
+                    {i + 1}
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
@@ -1313,7 +1335,7 @@ function NutritionTab({ recipe, ratio, isCocktail, servings, library }: {
       each: 100, slice: 30, sprig: 2, leaf: 0.5, clove: 3, bunch: 100,
     }
     for (const ing of recipe.ingredients ?? []) {
-      if (!ing.library_id) continue
+      if (!ing || !ing.library_id) continue
       total++
       const lib = library.find(l => l.id === ing.library_id)
       if (!lib || lib.calories_per_100g == null) continue
@@ -1456,7 +1478,7 @@ function ShoppingTab({ recipe, ratio, checks, onToggle, onClear, library, allRec
     return recipe.components.flatMap(comp => {
       const sub = allRecipes.find(r => r.id === comp.recipe_id)
       if (!sub) return []
-      return (sub.ingredients ?? []).map(i => ({
+      return (sub.ingredients ?? []).filter(Boolean).map(i => ({
         ...i,
         id: `${comp.id}:${i.id}`,
         _fromComponent: comp.recipe_name,

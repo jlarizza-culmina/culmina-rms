@@ -63,6 +63,12 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
   }
 
   function goBackToIndex(idx: number) {
+    if (idx < 0) {
+      setNavStack([])
+      setActiveTab('overview')
+      onSubPageChange?.('')
+      return
+    }
     const newStack = navStack.slice(0, idx + 1)
     setNavStack(newStack)
     setActiveTab('overview')
