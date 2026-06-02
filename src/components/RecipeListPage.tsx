@@ -11,6 +11,7 @@ interface Props {
   onSelect: (id: string) => void
   onNewRecipe: () => void
   onShowUnlinked?: () => void
+  onUpdateRecipe?: (id: string, updates: Partial<Recipe>) => Promise<void>
   prepSelected: Set<string>
   onTogglePrepSelect: (id: string) => void
   onOpenPrepList: () => void
@@ -58,7 +59,7 @@ function sortRecipes(recipes: Recipe[], key: SortKey, dir: 'asc' | 'desc'): Reci
 
 export default function RecipeListPage({
   recipes, library = [], loading, onSelect, onNewRecipe, onShowUnlinked,
-  prepSelected, onTogglePrepSelect, onOpenPrepList,
+  onUpdateRecipe, prepSelected, onTogglePrepSelect, onOpenPrepList,
 }: Props) {
   const [tab,         setTab]         = useState<RecipeTab>('food')
   const [viewMode,    setViewMode]    = useState<'list' | 'calendar'>('list')
@@ -66,6 +67,7 @@ export default function RecipeListPage({
   const [showFilter,  setShowFilter]  = useState(false)
   const [sortKey,     setSortKey]     = useState<SortKey>('created_at')
   const [sortDir,     setSortDir]     = useState<'asc' | 'desc'>('desc')
+  const [editingId,   setEditingId]   = useState<string | null>(null)
   const [filterStage, setFilterStage] = useState<RecipeStage | 'all'>('all')
   const [filterStatus,setFilterStatus]= useState<MenuItemStatus | 'all'>('all')
   const [filterSeason,    setFilterSeason]    = useState<string | 'all'>('all')
@@ -429,10 +431,11 @@ export default function RecipeListPage({
                 const stage  = r.recipe_stage ?? 'development'
                 const status = r.menu_status  ?? 'not_on_menu'
                 const isPrepSelected = prepSelected.has(r.id)
+                const isEditing = editingId === r.id
                 return (
+                  <>
                   <tr key={r.id}
-                    onClick={() => onSelect(r.id)}
-                    className={`border-b border-[--border] cursor-pointer transition-colors hover:bg-[--accent-light]/30 ${i % 2 === 0 ? 'bg-white' : 'bg-[--surface-2]/40'}`}>
+                    className={`border-b ${isEditing ? 'border-[--accent]' : 'border-[--border]'} cursor-pointer transition-colors hover:bg-[--accent-light]/30 group ${i % 2 === 0 ? 'bg-white' : 'bg-[--surface-2]/40'}`}>
 
                     {/* Prep select checkbox */}
                     <td className="px-3 py-3" onClick={e => { e.stopPropagation(); onTogglePrepSelect(r.id) }}>
@@ -442,40 +445,55 @@ export default function RecipeListPage({
                     </td>
 
                     {/* Thumbnail */}
-                    <td className="px-2 py-3">
+                    <td className="px-2 py-3" onClick={() => onSelect(r.id)}>
                       <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg flex-shrink-0 ${r.recipe_type === 'cocktail' ? 'bg-purple-50' : 'bg-[--accent-light]'}`}>
                         {r.recipe_type === 'cocktail' ? '🍸' : '🍽'}
                       </div>
                     </td>
 
-                    {/* Name */}
-                    <td className="px-3 py-3 min-w-0">
-                      <div className="font-medium text-[--text] text-sm truncate max-w-xs">{r.name}</div>
-                      {r.menu_name && r.menu_name !== r.name && (
-                        <div className="text-[11px] text-[--muted] truncate max-w-xs mt-0.5">
-                          on menu as: {r.menu_name}
+                    {/* Name + edit toggle */}
+                    <td className="px-3 py-3 min-w-0" onClick={() => onSelect(r.id)}>
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-[--text] text-sm truncate max-w-xs">{r.name}</div>
+                          {r.menu_name && r.menu_name !== r.name && (
+                            <div className="text-[11px] text-[--muted] truncate max-w-xs mt-0.5">
+                              menu: {r.menu_name}
+                            </div>
+                          )}
+                          {r.is_special && <span className="text-[10px] text-amber-600">⭐ Special</span>}
+                          {r.description && (
+                            <div className="text-[11px] text-[--hint] truncate max-w-xs mt-0.5">{r.description}</div>
+                          )}
+                          {(r.menu_sections ?? []).length > 0 && (
+                            <div className="flex gap-1 mt-0.5 flex-wrap">
+                              {(r.menu_sections ?? []).map(s => (
+                                <span key={s} className="text-[9px] bg-[--accent-light] text-[--accent] px-1.5 py-0.5 rounded-full capitalize">{s.replace('_',' ')}</span>
+                              ))}
+                            </div>
+                          )}
+                          {r.tags?.length > 0 && (
+                            <div className="flex gap-1 mt-1 flex-wrap">
+                              {r.tags.slice(0,4).map(t => (
+                                <span key={t} className="text-[10px] bg-[--surface-2] text-[--muted] px-1.5 py-0.5 rounded-full border border-[--border]">{t}</span>
+                              ))}
+                              {r.tags.length > 4 && <span className="text-[10px] text-[--hint]">+{r.tags.length-4}</span>}
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {r.is_special && <span className="text-[10px] text-amber-600">⭐ Special</span>}
-                      {(r.menu_sections ?? []).length > 0 && (
-                        <div className="flex gap-1 mt-0.5 flex-wrap">
-                          {(r.menu_sections ?? []).map(s => (
-                            <span key={s} className="text-[9px] bg-[--accent-light] text-[--accent] px-1.5 py-0.5 rounded-full capitalize">{s.replace('_',' ')}</span>
-                          ))}
-                        </div>
-                      )}
-                      {r.tags?.length > 0 && (
-                        <div className="flex gap-1 mt-1 flex-wrap">
-                          {r.tags.slice(0,3).map(t => (
-                            <span key={t} className="text-[10px] bg-[--surface-2] text-[--muted] px-1.5 py-0.5 rounded-full border border-[--border]">{t}</span>
-                          ))}
-                          {r.tags.length > 3 && <span className="text-[10px] text-[--hint]">+{r.tags.length-3}</span>}
-                        </div>
-                      )}
+                        {/* Edit pencil */}
+                        {onUpdateRecipe && (
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditingId(isEditing ? null : r.id) }}
+                            className={`flex-shrink-0 text-[11px] p-1 rounded transition-colors mt-0.5 ${isEditing ? 'text-[--accent]' : 'text-[--hint] opacity-0 group-hover:opacity-100 hover:text-[--accent]'}`}>
+                            ✎
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     {/* Stage */}
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3" onClick={() => onSelect(r.id)}>
                       <span className={`text-[11px] px-2 py-0.5 rounded-full capitalize font-medium ${STAGE_COLORS[stage]}`}>
                         <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: STAGE_DOTS[stage] }} />
                         {stage.replace('_',' ')}
@@ -483,14 +501,14 @@ export default function RecipeListPage({
                     </td>
 
                     {/* Status */}
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3" onClick={() => onSelect(r.id)}>
                       <span className={`text-[11px] font-medium ${STATUS_COLORS[status]}`}>
                         {STATUS_LABELS[status]}
                       </span>
                     </td>
 
                     {/* Season */}
-                    <td className="px-3 py-3 hidden md:table-cell">
+                    <td className="px-3 py-3 hidden md:table-cell" onClick={() => onSelect(r.id)}>
                       <div className="flex gap-0.5">
                         {(r.seasons ?? []).map(s => (
                           <span key={s} title={s} className="text-sm">{SEASON_ICONS[s]}</span>
@@ -499,14 +517,14 @@ export default function RecipeListPage({
                     </td>
 
                     {/* Date */}
-                    <td className="px-3 py-3 hidden lg:table-cell">
+                    <td className="px-3 py-3 hidden lg:table-cell" onClick={() => onSelect(r.id)}>
                       <span className="text-[11px] text-[--muted]">
                         {r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
                       </span>
                     </td>
 
                     {/* Ranking */}
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3" onClick={() => onSelect(r.id)}>
                       {r.ranking ? (
                         <span className="text-[11px] text-amber-500">{'★'.repeat(r.ranking)}</span>
                       ) : (
@@ -514,6 +532,23 @@ export default function RecipeListPage({
                       )}
                     </td>
                   </tr>
+
+                  {/* ── Inline edit row ── */}
+                  {isEditing && onUpdateRecipe && (
+                    <tr key={`${r.id}-edit`} className="bg-[--accent-light]/20 border-b border-[--accent]">
+                      <td colSpan={8} className="px-4 py-3">
+                        <InlineEditRow
+                          recipe={r}
+                          onSave={async updates => {
+                            await onUpdateRecipe(r.id, updates)
+                            setEditingId(null)
+                          }}
+                          onCancel={() => setEditingId(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 )
               })}
             </tbody>
@@ -528,6 +563,102 @@ export default function RecipeListPage({
           {filtered.length !== typeFiltered.length && ` of ${typeFiltered.length}`}
         </span>
         <span className="ml-auto text-[10px] text-[--hint]">Powered by CulminaRMS</span>
+      </div>
+    </div>
+  )
+}
+
+// ── InlineEditRow ─────────────────────────────────────────────
+function InlineEditRow({ recipe, onSave, onCancel }: {
+  recipe: Recipe
+  onSave: (updates: Partial<Recipe>) => Promise<void>
+  onCancel: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [vals, setVals] = useState({
+    name:             recipe.name            ?? '',
+    description:      recipe.description     ?? '',
+    menu_name:        recipe.menu_name        ?? '',
+    menu_description: recipe.menu_description ?? '',
+    internal_notes:   recipe.internal_notes   ?? '',
+    server_notes:     recipe.server_notes     ?? '',
+  })
+  const [tags, setTags] = useState<string[]>(recipe.tags ?? [])
+  const [tagInput, setTagInput] = useState('')
+
+  function addTag(t: string) {
+    const clean = t.trim().toLowerCase()
+    if (clean && !tags.includes(clean)) setTags(prev => [...prev, clean])
+    setTagInput('')
+  }
+  function removeTag(t: string) { setTags(prev => prev.filter(x => x !== t)) }
+
+  async function save() {
+    setSaving(true)
+    await onSave({ ...vals, tags })
+    setSaving(false)
+  }
+
+  const fields = [
+    { key: 'name' as const,             label: 'Recipe name',        wide: false },
+    { key: 'description' as const,      label: 'Description',        wide: true  },
+    { key: 'menu_name' as const,        label: 'Menu name',          wide: false },
+    { key: 'menu_description' as const, label: 'Menu description',   wide: true  },
+    { key: 'internal_notes' as const,   label: 'Internal notes',     wide: true  },
+    { key: 'server_notes' as const,     label: 'Server notes (FOH)', wide: true  },
+  ]
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        {fields.map(f => (
+          <div key={f.key} className={f.wide ? 'col-span-2' : ''}>
+            <label className="block text-[10px] font-medium text-[--muted] mb-1 uppercase tracking-wide">{f.label}</label>
+            {f.wide ? (
+              <textarea rows={2} value={vals[f.key]}
+                onChange={e => setVals(p => ({ ...p, [f.key]: e.target.value }))}
+                className="w-full text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent] resize-none" />
+            ) : (
+              <input value={vals[f.key]}
+                onChange={e => setVals(p => ({ ...p, [f.key]: e.target.value }))}
+                className="w-full text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent]" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Tags */}
+      <div>
+        <label className="block text-[10px] font-medium text-[--muted] mb-1.5 uppercase tracking-wide">Tags</label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {tags.map(t => (
+            <span key={t} className="inline-flex items-center gap-1 text-[11px] bg-[--surface-2] text-[--muted] px-2 py-0.5 rounded-full border border-[--border]">
+              {t}
+              <button onClick={() => removeTag(t)} className="text-[--hint] hover:text-red-400 text-[10px]">✕</button>
+            </span>
+          ))}
+          <input
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput) }
+            }}
+            onBlur={() => { if (tagInput.trim()) addTag(tagInput) }}
+            placeholder="+ add tag"
+            className="text-[11px] border-0 outline-none bg-transparent text-[--accent] placeholder:text-[--hint] min-w-[80px]"
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={save} disabled={saving}
+          className="px-4 py-1.5 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+        <button onClick={onCancel}
+          className="px-4 py-1.5 border border-[--border-2] text-[--muted] text-xs rounded-lg hover:bg-[--surface-2]">
+          Cancel
+        </button>
       </div>
     </div>
   )

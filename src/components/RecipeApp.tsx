@@ -279,6 +279,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
             const r = recipes.find(x => x.id === id)
             navigateTo(id, r?.name ?? '')
           }}
+          onUpdateRecipe={handleUpdateRecipe}
           onNewRecipe={() => setAddOpen(true)}
           onShowUnlinked={() => setUnlinkedOpen(true)}
           prepSelected={prepSelected}
