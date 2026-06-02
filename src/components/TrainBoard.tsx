@@ -1,143 +1,166 @@
-// src/components/TrainBoard.tsx
-// Live Darien Metro-North arrivals — used in WaitlistModule and host view
-// Shows next inbound/outbound trains with minutes-to-arrival
-
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import type { TrainArrival } from '@/app/api/mta/arrivals/route'
+// src/components/TrainBoard.tsx
+// Metro-North train arrivals for Darien station
+
+import { useState, useEffect } from 'react'
+
+interface Train {
+  tripId: string
+  routeId: string
+  stopId: string
+  arrivalTime: number
+  departureTime: number
+  minsAway: number
+  direction: 'inbound' | 'outbound'
+  status: string
+}
 
 interface Props {
-  direction?: 'inbound' | 'outbound'   // omit for both
+  compact?: boolean
+  direction?: 'inbound' | 'outbound' | 'both'
   limit?: number
-  compact?: boolean                     // pill mode for header
-  onNextTrainMinutes?: (min: number | null) => void  // for waitlist logic
 }
 
-const DIR_LABELS = {
-  inbound:  'toward Grand Central',
-  outbound: 'from Grand Central (arriving)',
-  unknown:  '',
+function formatTime(unixSec: number): string {
+  const d = new Date(unixSec * 1000)
+  const h = d.getHours() % 12 || 12
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const ap = d.getHours() >= 12 ? 'PM' : 'AM'
+  return `${h}:${m} ${ap}`
 }
 
-const DIR_ICONS = {
-  inbound:  '🚆↗',
-  outbound: '🚆↙',
-  unknown:  '🚆',
-}
+export default function TrainBoard({ compact = false, direction = 'both', limit = 6 }: Props) {
+  const [trains,  setTrains]  = useState<Train[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string | null>(null)
+  const [updated, setUpdated] = useState<number | null>(null)
 
-function MinutesBadge({ minutes }: { minutes: number | null }) {
-  if (minutes === null) return <span className="text-[--hint]">—</span>
-  if (minutes <= 2)  return <span className="text-red-600 font-bold text-xs">NOW</span>
-  if (minutes <= 5)  return <span className="text-orange-500 font-semibold text-xs">{minutes} min</span>
-  if (minutes <= 15) return <span className="text-amber-600 font-medium text-xs">{minutes} min</span>
-  return <span className="text-[--muted] text-xs">{minutes} min</span>
-}
-
-export default function TrainBoard({ direction, limit = 4, compact = false, onNextTrainMinutes }: Props) {
-  const [arrivals, setArrivals] = useState<TrainArrival[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState<string | null>(null)
-  const [asOf,     setAsOf]     = useState<string>('')
-
-  const load = useCallback(async () => {
+  async function fetchTrains() {
     try {
-      const params = new URLSearchParams({ limit: String(limit) })
-      if (direction) params.set('direction', direction)
-      const res = await fetch(`/api/mta/arrivals?${params}`)
+      const res  = await fetch('/api/mta/arrivals', { cache: 'no-store' })
       const data = await res.json()
-      if (!data.ok) throw new Error(data.error)
-      setArrivals(data.arrivals)
-      setAsOf(data.as_of)
-      setError(null)
-      // Notify parent of next train ETA
-      const next = data.arrivals.find((a: TrainArrival) => a.isNextTrain)
-      onNextTrainMinutes?.(next?.minutesUntilArrival ?? null)
-    } catch (e) {
-      setError(String(e))
+      if (data.error && !data.trains?.length) {
+        setError(data.error)
+      } else {
+        setError(null)
+        setTrains(data.trains ?? [])
+        setUpdated(data.updatedAt ?? null)
+      }
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to load')
     } finally {
       setLoading(false)
     }
-  }, [direction, limit, onNextTrainMinutes])
+  }
 
   useEffect(() => {
-    load()
-    const interval = setInterval(load, 30_000)  // refresh every 30s
+    fetchTrains()
+    const interval = setInterval(fetchTrains, 30_000)
     return () => clearInterval(interval)
-  }, [load])
+  }, [])
 
-  // ── Compact mode: just a pill ──
+  const visible = trains
+    .filter(t => direction === 'both' || t.direction === direction)
+    .slice(0, limit)
+
+  // ── Compact pill mode ─────────────────────────────────────────
   if (compact) {
-    if (loading || arrivals.length === 0) return null
-    const next = arrivals[0]
+    if (loading) return (
+      <div className="flex items-center gap-1.5 text-[10px] text-[--hint]">
+        <span className="w-1.5 h-1.5 rounded-full bg-[--hint] animate-pulse" />
+        Loading train data…
+      </div>
+    )
+    if (error || !visible.length) return (
+      <div className="text-[10px] text-[--hint]">🚂 No train data</div>
+    )
     return (
-      <div className="flex items-center gap-1.5 text-[11px] text-[--muted]" title={`Next train: ${next.arrivalTime}`}>
-        <span>🚆</span>
-        <MinutesBadge minutes={next.minutesUntilArrival} />
+      <div className="flex flex-wrap gap-1.5 items-center">
+        {visible.slice(0, 3).map((t, i) => (
+          <span key={i} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+            t.minsAway <= 2
+              ? 'bg-red-50 text-red-600 border-red-200'
+              : t.minsAway <= 5
+              ? 'bg-amber-50 text-amber-600 border-amber-200'
+              : 'bg-[--surface-2] text-[--muted] border-[--border]'
+          }`}>
+            🚆 {t.minsAway <= 0 ? 'Now' : `${t.minsAway}m`}
+            <span className="opacity-60">{t.direction === 'inbound' ? '↑NYC' : '↓CT'}</span>
+          </span>
+        ))}
+        <span className="text-[9px] text-[--hint]">Live MTA</span>
       </div>
     )
   }
 
-  // ── Full board ──
+  // ── Full board mode ───────────────────────────────────────────
   return (
-    <div className="rounded-xl border border-[--border] overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[--surface-2] border-b border-[--border]">
+    <div className="bg-white rounded-xl border border-[--border] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[--border] bg-[--surface-2]">
         <div className="flex items-center gap-2">
           <span className="text-sm">🚆</span>
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-[--hint]">
-            Darien Station
-            {direction && <span className="ml-1 font-normal">{DIR_LABELS[direction]}</span>}
-          </span>
+          <span className="text-xs font-medium text-[--text]">Darien — Metro-North</span>
         </div>
         <div className="flex items-center gap-2">
-          {asOf && <span className="text-[9px] text-[--hint]">Updated {asOf}</span>}
-          <button onClick={load} className="text-[--hint] hover:text-[--accent] text-[10px]">↻</button>
+          {updated && (
+            <span className="text-[9px] text-[--hint]">
+              Updated {formatTime(updated)}
+            </span>
+          )}
+          <button onClick={fetchTrains}
+            className="text-[9px] text-[--accent] hover:underline">
+            Refresh
+          </button>
         </div>
       </div>
 
-      {/* Body */}
       {loading ? (
-        <div className="py-6 text-center text-[11px] text-[--hint]">Loading train data…</div>
+        <div className="px-4 py-6 text-center text-xs text-[--hint]">Loading train data…</div>
       ) : error ? (
-        <div className="py-4 px-3 text-[11px] text-red-500">
-          Could not load train data: {error}
+        <div className="px-4 py-4 text-center">
+          <div className="text-xs text-red-500 mb-1">Could not load train data</div>
+          <div className="text-[10px] text-[--hint] truncate max-w-xs mx-auto">{error}</div>
+          <button onClick={fetchTrains}
+            className="mt-2 text-[11px] text-[--accent] hover:underline">
+            Try again
+          </button>
         </div>
-      ) : arrivals.length === 0 ? (
-        <div className="py-6 text-center text-[11px] text-[--hint]">
-          No trains in the next 90 minutes
-        </div>
+      ) : visible.length === 0 ? (
+        <div className="px-4 py-6 text-center text-xs text-[--muted]">No upcoming trains</div>
       ) : (
         <div className="divide-y divide-[--border]">
-          {arrivals.map((a, i) => (
-            <div key={a.tripId + a.stopId}
-              className={`flex items-center px-3 py-2.5 gap-3 ${a.isNextTrain ? 'bg-amber-50' : ''}`}>
-              {/* Direction icon */}
-              <span className="text-base flex-shrink-0">{DIR_ICONS[a.direction]}</span>
+          {visible.map((t, i) => (
+            <div key={i} className="flex items-center px-4 py-2.5 gap-3">
+              {/* Status dot */}
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                t.minsAway <= 2 ? 'bg-red-400'
+                : t.minsAway <= 5 ? 'bg-amber-400'
+                : 'bg-green-400'
+              }`} />
 
               {/* Time */}
-              <div className="flex-shrink-0 w-16 text-xs font-medium text-[--text]">
-                {a.arrivalTime ?? a.departureTime ?? '—'}
+              <div className="w-16 text-xs font-medium text-[--text] flex-shrink-0">
+                {formatTime(t.arrivalTime)}
               </div>
 
-              {/* Countdown */}
-              <div className="flex-shrink-0 w-14">
-                <MinutesBadge minutes={a.minutesUntilArrival} />
+              {/* Mins away */}
+              <div className={`w-14 text-xs font-semibold flex-shrink-0 ${
+                t.minsAway <= 2 ? 'text-red-500'
+                : t.minsAway <= 5 ? 'text-amber-500'
+                : 'text-[--accent]'
+              }`}>
+                {t.minsAway <= 0 ? 'Now' : `${t.minsAway} min`}
               </div>
 
-              {/* Route / status */}
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-[--muted] truncate">
-                  {a.direction === 'outbound' ? 'from NYC arriving' : 'departing to GCT'}
-                  {!a.isOnTime && (
-                    <span className="ml-1.5 text-orange-500 text-[9px]">{a.scheduleRelationship}</span>
-                  )}
-                </div>
+              {/* Direction */}
+              <div className="flex-1 text-xs text-[--muted]">
+                {t.direction === 'inbound' ? '↑ toward New York' : '↓ toward New Haven'}
               </div>
 
-              {/* Next train badge */}
-              {a.isNextTrain && (
-                <span className="flex-shrink-0 text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-semibold">
-                  NEXT
+              {/* Status badge */}
+              {t.status !== 'on time' && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[--surface-2] text-[--hint] capitalize">
+                  {t.status}
                 </span>
               )}
             </div>
@@ -145,9 +168,8 @@ export default function TrainBoard({ direction, limit = 4, compact = false, onNe
         </div>
       )}
 
-      {/* Footer: walk time note */}
-      <div className="px-3 py-1.5 bg-[--surface-2] border-t border-[--border]">
-        <span className="text-[9px] text-[--hint]">2 min walk from platform · Live MTA data</span>
+      <div className="px-4 py-1.5 border-t border-[--border] text-[9px] text-[--hint]">
+        2 min walk from platform · Live MTA data
       </div>
     </div>
   )
