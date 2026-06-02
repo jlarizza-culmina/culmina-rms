@@ -46,6 +46,7 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
   const [totalEnrich,  setTotalEnrich] = useState(0)
   const [saving,       setSaving]      = useState<string | null>(null)
   const [listFilter,   setListFilter]  = useState<ListFilter>('null')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [page,         setPage]        = useState(0)
   const [totalPages,   setTotalPages]  = useState(1)
   const [bulkRunning,  setBulkRunning] = useState(false)
@@ -57,10 +58,14 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
     setLoading(true)
 
     // Base query — deduplicated via distinct ID selection
-    const base = () => supabase.from('ingredient_library')
-      .select('*')
-      .or(`restaurant_id.eq.${restaurantId},user_id.eq.${userId},user_id.is.null`)
-      .eq('is_active', true)
+    const base = () => {
+      let q = supabase.from('ingredient_library')
+        .select('*')
+        .or(`restaurant_id.eq.${restaurantId},user_id.eq.${userId},user_id.is.null`)
+        .eq('is_active', true)
+      if (categoryFilter) q = (q as any).eq('category', categoryFilter)
+      return q
+    }
 
     // Apply list filter
     const applyFilter = (q: ReturnType<typeof base>) => {
@@ -112,16 +117,30 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
     setTotalAll(allUnique.length)
     setTotalEnrich(enrichUnique.length)
     setLoading(false)
-  }, [restaurantId, userId, page, listFilter])
+  }, [restaurantId, userId, page, listFilter, categoryFilter])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setPage(0) }, [listFilter])
+  useEffect(() => { setPage(0) }, [listFilter, categoryFilter])
+
+  const CATS = ['', 'Bar', 'Coffee & Beverage', 'Dairy & Eggs', 'Fruits',
+    'Herbs & Spices', 'Oils & Vinegars', 'Pantry', 'Pasta & Grains',
+    'Proteins', 'Stocks & Sauces', 'Vegetables']
 
   // ── Selection ────────────────────────────────────────────────
   const checkedCount = useMemo(() => items.filter(r => r._checked).length, [items])
   const allChecked   = items.length > 0 && items.every(r => r._checked)
   const toggleAll    = () => setItems(prev => prev.map(r => ({ ...r, _checked: !allChecked })))
   const toggleItem   = (id: string) => setItems(prev => prev.map(r => r.id === id ? { ...r, _checked: !r._checked } : r))
+
+  // ── API update (service role — bypasses RLS for global seed items) ──
+  async function apiUpdate(id: string, fields: Record<string, any>) {
+    const res = await fetch('/api/nutrition/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...fields }),
+    })
+    if (!res.ok) throw new Error(await res.text())
+  }
 
   // ── USDA search ──────────────────────────────────────────────
   async function searchOne(item: IngRow) {
@@ -162,38 +181,41 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
   // ── Apply USDA result ────────────────────────────────────────
   async function applyUsda(itemId: string, result: UsdaResult) {
     setSaving(itemId)
-    await supabase.from('ingredient_library').update({
-      calories_per_100g:  result.calories,
-      protein_g_per_100g: result.protein_g,
-      carbs_g_per_100g:   result.carbs_g,
-      fat_g_per_100g:     result.fat_g,
-      fiber_g_per_100g:   result.fiber_g,
-      sodium_mg_per_100g: result.sodium_mg,
-      usda_fdc_id:        result.fdcId,
-      nutrition_verified: true,
-      nutrition_updated_at: new Date().toISOString(),
-    }).eq('id', itemId)
-    setItems(prev => prev.filter(r => r.id !== itemId))
-    setTotalEnrich(c => c + 1)
+    try {
+      await apiUpdate(itemId, {
+        calories_per_100g:  result.calories,
+        protein_g_per_100g: result.protein_g,
+        carbs_g_per_100g:   result.carbs_g,
+        fat_g_per_100g:     result.fat_g,
+        fiber_g_per_100g:   result.fiber_g,
+        sodium_mg_per_100g: result.sodium_mg,
+        usda_fdc_id:        result.fdcId,
+        nutrition_verified: true,
+      })
+      setItems(prev => prev.filter(r => r.id !== itemId))
+      setTotalEnrich(c => c + 1)
+    } catch (e) { console.error('applyUsda error', e) }
     setSaving(null)
   }
 
   // ── Save manual ──────────────────────────────────────────────
   async function saveManual(itemId: string, vals: Record<string, any>) {
     setSaving(itemId)
-    await supabase.from('ingredient_library').update({
-      ...vals, nutrition_verified: true, nutrition_updated_at: new Date().toISOString(),
-    }).eq('id', itemId)
-    setItems(prev => prev.filter(r => r.id !== itemId))
-    setTotalEnrich(c => c + 1)
+    try {
+      await apiUpdate(itemId, { ...vals, nutrition_verified: true })
+      setItems(prev => prev.filter(r => r.id !== itemId))
+      setTotalEnrich(c => c + 1)
+    } catch (e) { console.error('saveManual error', e) }
     setSaving(null)
   }
 
   // ── Toggle excluded ──────────────────────────────────────────
   async function toggleExclude(item: IngRow) {
     const newVal = !item.nutrition_excluded
-    await supabase.from('ingredient_library').update({ nutrition_excluded: newVal }).eq('id', item.id)
-    setItems(prev => prev.filter(r => r.id !== item.id))
+    try {
+      await apiUpdate(item.id, { nutrition_excluded: newVal })
+      setItems(prev => prev.filter(r => r.id !== item.id))
+    } catch (e) { console.error('toggleExclude error', e) }
   }
 
   // ── CSV export ───────────────────────────────────────────────
@@ -232,6 +254,10 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
           {(Object.entries(FILTER_LABELS) as [ListFilter, string][]).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
+        </select>
+        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+          className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-[--accent]">
+          {CATS.map(c => <option key={c} value={c}>{c || '— All categories —'}</option>)}
         </select>
         <div className="flex-1" />
         {checkedCount > 0 && (
