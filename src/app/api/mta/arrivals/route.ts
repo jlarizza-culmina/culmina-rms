@@ -3,6 +3,17 @@
 
 import { NextResponse } from 'next/server'
 
+export interface TrainArrival {
+  tripId: string
+  routeId: string
+  stopId: string
+  arrivalTime: number
+  departureTime: number
+  minsAway: number
+  direction: 'inbound' | 'outbound'
+  status: string
+}
+
 const MNR_FEED = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr'
 const DARIEN_STOP_IDS = ['122', '122_E', '122_I', '122N', '122S']
 
@@ -35,7 +46,7 @@ export async function GET() {
     )
 
     const now    = Math.floor(Date.now() / 1000)
-    const trains: any[] = []
+    const trains: TrainArrival[] = []
 
     for (const entity of feed.entity ?? []) {
       const tu = entity.tripUpdate
