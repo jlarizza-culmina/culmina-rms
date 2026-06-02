@@ -5,6 +5,7 @@ import type { Restaurant, Location, PicklistValue, DishMode, UserRole } from '@/
 import type { AppContext } from './AppShell'
 import AIIngredientImporter from './AIIngredientImporter'
 import NutritionEnricher from './NutritionEnricher'
+import GlobalIngredientMapper from './GlobalIngredientMapper'
 
 interface Props {
   ctx: AppContext
@@ -13,7 +14,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -226,7 +227,8 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     { key: 'branding',     label: 'Branding' },
     { key: 'queue',          label: 'Queue' },
     { key: 'library_import', label: '✨ AI Library Import' },
-    { key: 'nutrition',      label: '🥦 Nutrition' },
+    { key: 'nutrition',       label: '🥦 Nutrition' },
+    { key: 'map_ingredients', label: '🔗 Map Ingredients' },
     { key: 'picklists',    label: 'Picklists' },
     { key: 'entitlements', label: 'Entitlements' },
     { key: 'team',         label: 'Team' },
@@ -610,6 +612,18 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
               </p>
             </div>
             <NutritionEnricher userId={userId} restaurantId={ctx.restaurant.id} />
+          </div>
+        )}
+        {tab === 'map_ingredients' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-[--text] mb-1">Global Ingredient Mapping</h3>
+              <p className="text-xs text-[--muted]">
+                Every unique ingredient name found across all recipes is listed once.
+                Map it to a library item and every recipe using that name updates simultaneously.
+              </p>
+            </div>
+            <GlobalIngredientMapper userId={userId} restaurantId={ctx.restaurant.id} />
           </div>
         )}
         {tab === 'library_import' && (
