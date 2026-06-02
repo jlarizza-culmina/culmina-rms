@@ -205,37 +205,69 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
     if (!restaurantId) return
     setSaving(true)
     try {
-      // Upsert production header
-      const { data: prod } = await supabase.from('daily_production').upsert({
-        ...production,
-        id:             production.id,
-        restaurant_id:  restaurantId,
-        location_id:    locationId ?? null,
-        production_date: date,
-        created_by:     userId,
-        updated_at:     new Date().toISOString(),
-      }, { onConflict: 'restaurant_id,location_id,production_date' }).select().single()
+      // SELECT first to handle NULL location_id (NULL != NULL in upsert onConflict)
+      let q = supabase.from('daily_production').select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('production_date', date)
+      if (locationId) q = (q as any).eq('location_id', locationId)
+      else q = (q as any).is('location_id', null)
+      const { data: existing } = await q.maybeSingle()
 
-      if (!prod) throw new Error('Failed to save production plan')
+      const payload = {
+        restaurant_id:         restaurantId,
+        location_id:           locationId ?? null,
+        production_date:       date,
+        covers_morning:        production.covers_morning,
+        covers_aperitivo:      production.covers_aperitivo,
+        covers_dinner:         production.covers_dinner,
+        covers_drinks:         production.covers_drinks,
+        covers_specials:       production.covers_specials,
+        service_time_morning:  production.service_time_morning,
+        service_time_aperitivo: production.service_time_aperitivo,
+        service_time_dinner:   production.service_time_dinner,
+        service_time_drinks:   production.service_time_drinks,
+        service_time_specials: production.service_time_specials,
+        notes:                 production.notes,
+        created_by:            userId,
+        updated_at:            new Date().toISOString(),
+      }
 
-      // Upsert items
-      const toUpsert = items.filter(i => i.planned_portions > 0).map((i: any) => ({
-        id:              i.id,
-        production_id:   prod.id,
-        recipe_id:       i.recipe_id,
-        menu_type:       i.menu_type,
-        planned_portions: i.planned_portions,
-        notes:           i.notes,
-      }))
+      let prod: any
+      if (existing?.id) {
+        const { data } = await supabase.from('daily_production')
+          .update(payload).eq('id', existing.id).select().single()
+        prod = data
+      } else {
+        const { data } = await supabase.from('daily_production')
+          .insert(payload).select().single()
+        prod = data
+      }
 
-      if (toUpsert.length > 0) {
-        await supabase.from('production_items').upsert(toUpsert)
+      if (!prod?.id) throw new Error('Failed to save production header')
+
+      // Delete existing items and reinsert — cleanest way to handle no-id rows
+      await supabase.from('production_items').delete().eq('production_id', prod.id)
+
+      const toInsert = items
+        .filter(i => (i.planned_portions ?? 0) > 0)
+        .map((i: any) => ({
+          production_id:    prod.id,
+          recipe_id:        i.recipe_id,
+          menu_type:        i.menu_type,
+          planned_portions: i.planned_portions,
+          notes:            i.notes || '',
+        }))
+
+      if (toInsert.length > 0) {
+        await supabase.from('production_items').insert(toInsert)
       }
 
       setProduction(prev => ({ ...prev, id: prod.id }))
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error('[production save]', e)
+    }
     setSaving(false)
   }
 
