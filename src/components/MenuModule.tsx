@@ -48,7 +48,7 @@ export default function MenuModule({ userId, restaurantId, locationId }: Props) 
     // Load recipes and library in parallel
     Promise.all([
       supabase.from('recipes').select('id,name,description,recipe_type,menu_sections,menu_description,tags,base_servings')
-        .eq('restaurant_id', restaurantId).eq('menu_status', 'on_menu').order('name'),
+        .eq('restaurant_id', restaurantId).order('name'),
       supabase.from('ingredient_library').select('id,name,category')
         .or(`user_id.eq.${userId},user_id.is.null`).eq('is_active', true).order('name'),
     ]).then(([{ data: rData }, { data: lData }]) => {
