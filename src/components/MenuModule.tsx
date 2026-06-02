@@ -166,7 +166,7 @@ export default function MenuModule({ userId, restaurantId, locationId }: Props) 
     const isPrinted = !pendingNotPrinted
     const maxSort = Math.max(0, ...activeItems.filter(i => i.section === section && i.is_printed === isPrinted).map(i => i.sort_order))
     const { data } = await supabase.from('menu_version_items').insert({
-      menu_version_id: version.id,
+      menu_version_id: version!.id,
       recipe_id: recipeId,
       section: isPrinted ? (section || 'General') : 'NOT PRINTED',
       sort_order: maxSort + 1,
