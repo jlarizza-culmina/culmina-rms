@@ -73,25 +73,44 @@ export default function NutritionEnricher({ userId, restaurantId }: Props) {
       return q // 'all'
     }
 
-    const [pageData, countData, allCount, enrichCount] = await Promise.all([
+    const [pageData, allCountData, enrichCountData] = await Promise.all([
       applyFilter(base()).order('category').order('name').range(page * PAGE, (page + 1) * PAGE - 1),
-      applyFilter(base()).select('id', { count: 'exact', head: true }),
-      supabase.from('ingredient_library').select('id', { count: 'exact', head: true })
-        .or(`restaurant_id.eq.${restaurantId},user_id.eq.${userId},user_id.is.null`).eq('is_active', true),
-      supabase.from('ingredient_library').select('id', { count: 'exact', head: true })
-        .or(`restaurant_id.eq.${restaurantId},user_id.eq.${userId},user_id.is.null`)
-        .eq('is_active', true).not('nutrition_updated_at', 'is', null),
+      base().select('id'),
+      base().not('nutrition_updated_at', 'is', null).select('id'),
     ])
 
     // Deduplicate by id
     const seen = new Set<string>()
-    const unique = (pageData.data ?? []).filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true })
-    const filteredCount = countData.count ?? 0
+    const unique = (pageData.data ?? []).filter((r: any) => {
+      if (seen.has(r.id)) return false
+      seen.add(r.id)
+      return true
+    })
 
-    setItems(unique.map(r => ({ ...r, _checked: false })))
+    // Count filtered items for pagination
+    let filteredRaw = allCountData.data ?? []
+    const now2 = new Date()
+    if (listFilter === 'null')     filteredRaw = filteredRaw.filter((r:any) => !r.nutrition_updated_at && !r.nutrition_excluded)
+    if (listFilter === 'enriched') filteredRaw = filteredRaw.filter((r:any) => r.nutrition_updated_at && !r.nutrition_excluded)
+    if (listFilter === 'last7')    filteredRaw = filteredRaw.filter((r:any) => r.nutrition_updated_at && new Date(r.nutrition_updated_at) >= new Date(now2.getTime()-7*86400000))
+    if (listFilter === 'last30')   filteredRaw = filteredRaw.filter((r:any) => r.nutrition_updated_at && new Date(r.nutrition_updated_at) >= new Date(now2.getTime()-30*86400000))
+    if (listFilter === 'excluded') filteredRaw = filteredRaw.filter((r:any) => r.nutrition_excluded)
+    const filteredCount = filteredRaw.length
+
+    // Deduplicate enrichCountData
+    const enrichSeen = new Set<string>()
+    const enrichUnique = (enrichCountData.data ?? []).filter((r:any) => {
+      if (enrichSeen.has(r.id)) return false; enrichSeen.add(r.id); return true
+    })
+    const allSeen = new Set<string>()
+    const allUnique = (allCountData.data ?? []).filter((r:any) => {
+      if (allSeen.has(r.id)) return false; allSeen.add(r.id); return true
+    })
+
+    setItems(unique.map((r: any) => ({ ...r, _checked: false })))
     setTotalPages(Math.max(1, Math.ceil(filteredCount / PAGE)))
-    setTotalAll(allCount.count ?? 0)
-    setTotalEnrich(enrichCount.count ?? 0)
+    setTotalAll(allUnique.length)
+    setTotalEnrich(enrichUnique.length)
     setLoading(false)
   }, [restaurantId, userId, page, listFilter])
 
