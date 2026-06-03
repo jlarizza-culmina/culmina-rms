@@ -40,6 +40,58 @@ export default function JoinPage() {
 
   const phoneRef = useRef<HTMLInputElement>(null)
 
+  // Arrival picker
+  const [step,          setStep]         = useState<'arrival-mode'|'arrival-time'|'form'>('arrival-mode')
+  const [arrivalMode,   setArrivalMode]  = useState<'outbound'|'inbound'|'other'|null>(null)
+  const [trains,        setTrains]       = useState<any[]>([])
+  const [trainsLoading, setTrainsLoading]= useState(false)
+  const [selectedTrain, setSelectedTrain]= useState<any|null>(null)
+  const [walkMinutes,   setWalkMinutes]  = useState(5)
+
+  async function loadTrains(dir: 'outbound'|'inbound') {
+    setTrainsLoading(true)
+    try {
+      const res  = await fetch('/api/mta/arrivals')
+      const data = await res.json()
+      setTrains((data.trains ?? []).filter((t: any) => t.direction === dir).slice(0, 5))
+    } catch { setTrains([]) }
+    setTrainsLoading(false)
+  }
+
+  function pickMode(mode: 'outbound'|'inbound'|'other') {
+    setArrivalMode(mode)
+    setSelectedTrain(null)
+    if (mode === 'other') { setStep('form') }
+    else { loadTrains(mode); setStep('arrival-time') }
+  }
+
+  function pickTrain(train: any) {
+    setSelectedTrain(train)
+    setStep('form')
+  }
+
+  function arrivalSummary(): string {
+    if (arrivalMode === 'other') return `🚶 ~${walkMinutes} min away`
+    if (selectedTrain) {
+      const dir = selectedTrain.direction === 'inbound' ? '→ Grand Central' : '→ New Haven'
+      return `🚆 ${formatArrTime(selectedTrain.arrivalTime)} ${dir} (${selectedTrain.minsAway} min)`
+    }
+    return ''
+  }
+
+  function computedArrivalTime(): number | null {
+    if (arrivalMode === 'other') return Math.floor(Date.now()/1000) + walkMinutes * 60
+    if (selectedTrain) return selectedTrain.arrivalTime
+    return null
+  }
+
+  function formatArrTime(unixSec: number): string {
+    const d = new Date(unixSec * 1000)
+    const h = d.getHours() % 12 || 12
+    const m = String(d.getMinutes()).padStart(2,'0')
+    return `${h}:${m} ${d.getHours()>=12?'PM':'AM'}`
+  }
+
   useEffect(() => {
     fetch(`/api/location-info/${locationId}`)
       .then(r => r.json())
@@ -109,6 +161,8 @@ export default function JoinPage() {
           birthdayDay:   bdDay   ? parseInt(bdDay)   : null,
           smsOptIn, emailOptIn,
           preferredLocationId: prefLoc || locationId,
+          arrivalMode:         arrivalMode ?? 'other',
+          estimatedArrivalAt:  computedArrivalTime(),
         }),
       })
       const data = await res.json()
@@ -194,15 +248,164 @@ export default function JoinPage() {
                 {result.total > 1 ? `of ${result.total} parties waiting` : 'party in line'}
               </div>
             </div>
+            {arrivalSummary() && (
+              <div style={{ background:'#F8F5F0', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#7A7568' }}>
+                {arrivalSummary()}
+              </div>
+            )}
             <p style={{ color:'#7A7568', fontSize:14, lineHeight:1.6 }}>
               {info?.settings?.confirmation_msg || "We'll text you when your table is ready."}
             </p>
             <p style={{ marginTop:12, color:'#B0AB9E', fontSize:12 }}>Confirmed to {phone}</p>
           </div>
+
+        ) : step === 'arrival-mode' ? (
+          /* ── Step 1: How are you arriving? ── */
+          <div className="fade" style={{ background:'white', borderRadius:20, padding:24, boxShadow:'0 2px 16px rgba(0,0,0,.06)' }}>
+            <h2 style={{ fontFamily:'Georgia,serif', fontSize:20, color:'#201C18', marginBottom:6 }}>
+              How are you getting here?
+            </h2>
+            <p style={{ color:'#B0AB9E', fontSize:13, marginBottom:20 }}>
+              So we can time your table perfectly.
+            </p>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {[
+                { key:'outbound', icon:'🚆', title:'New Haven Line', sub:'Heading toward Connecticut', badge:'→ New Haven' },
+                { key:'inbound',  icon:'🚆', title:'New Haven Line', sub:'Heading to the city', badge:'→ Grand Central' },
+                { key:'other',    icon:'🚗', title:'By foot, wheel, or sheer willpower', sub:'Walking, driving, biking, etc.', badge:null },
+              ].map(opt => (
+                <button key={opt.key} type="button" onClick={() => pickMode(opt.key as any)}
+                  style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 16px', borderRadius:14, border:`2px solid #E3DDD5`, background:'white', cursor:'pointer', textAlign:'left', transition:'all .15s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = accent; (e.currentTarget as HTMLButtonElement).style.background = `${accent}08` }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#E3DDD5'; (e.currentTarget as HTMLButtonElement).style.background = 'white' }}>
+                  <span style={{ fontSize:28, flexShrink:0 }}>{opt.icon}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:15, fontWeight:600, color:'#201C18' }}>{opt.title}</div>
+                    <div style={{ fontSize:12, color:'#7A7568', marginTop:2 }}>{opt.sub}</div>
+                  </div>
+                  {opt.badge && (
+                    <span style={{ fontSize:11, fontWeight:600, color:accent, background:`${accent}15`, padding:'3px 8px', borderRadius:20, flexShrink:0 }}>
+                      {opt.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+        ) : step === 'arrival-time' && arrivalMode !== 'other' ? (
+          /* ── Step 2: Pick your train ── */
+          <div className="fade" style={{ background:'white', borderRadius:20, padding:24, boxShadow:'0 2px 16px rgba(0,0,0,.06)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+              <button type="button" onClick={() => setStep('arrival-mode')}
+                style={{ background:'none', border:'none', cursor:'pointer', color:'#B0AB9E', fontSize:20, padding:0, lineHeight:1 }}>←</button>
+              <div>
+                <h2 style={{ fontFamily:'Georgia,serif', fontSize:20, color:'#201C18' }}>Pick your train</h2>
+                <p style={{ color:'#B0AB9E', fontSize:12, marginTop:2 }}>
+                  {arrivalMode === 'inbound' ? '→ Grand Central' : '→ New Haven'} · next arrivals at Darien
+                </p>
+              </div>
+            </div>
+            {trainsLoading ? (
+              <div style={{ textAlign:'center', padding:'32px 0', color:'#B0AB9E', fontSize:13 }}>
+                <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${accent}30`, borderTopColor:accent, animation:'spin .7s linear infinite', margin:'0 auto 10px' }} />
+                Loading train times…
+              </div>
+            ) : trains.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'24px 0' }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>🔍</div>
+                <p style={{ color:'#7A7568', fontSize:13 }}>No trains found right now.</p>
+                <button type="button" onClick={() => loadTrains(arrivalMode!)}
+                  style={{ marginTop:12, color:accent, background:'none', border:'none', cursor:'pointer', fontSize:13, textDecoration:'underline' }}>
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {trains.map((t: any, i: number) => (
+                  <button key={i} type="button" onClick={() => pickTrain(t)}
+                    style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', borderRadius:14,
+                      border:`2px solid ${selectedTrain===t ? accent : '#E3DDD5'}`,
+                      background: selectedTrain===t ? `${accent}10` : 'white',
+                      cursor:'pointer', transition:'all .15s' }}
+                    onMouseEnter={e => { if(selectedTrain!==t)(e.currentTarget as HTMLButtonElement).style.borderColor=accent }}
+                    onMouseLeave={e => { if(selectedTrain!==t)(e.currentTarget as HTMLButtonElement).style.borderColor='#E3DDD5' }}>
+                    <div style={{ width:48, height:48, borderRadius:12, background:t.minsAway<=2?'#FEF2F2':t.minsAway<=5?'#FFFBEB':'#F8F5F0', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <span style={{ fontSize:17, fontWeight:700, color:t.minsAway<=2?'#DC2626':t.minsAway<=5?'#D97706':accent, lineHeight:1 }}>
+                        {t.minsAway <= 0 ? 'NOW' : t.minsAway}
+                      </span>
+                      {t.minsAway > 0 && <span style={{ fontSize:9, color:'#B0AB9E', marginTop:1 }}>min</span>}
+                    </div>
+                    <div style={{ flex:1, textAlign:'left' }}>
+                      <div style={{ fontSize:16, fontWeight:600, color:'#201C18' }}>{formatArrTime(t.arrivalTime)}</div>
+                      <div style={{ fontSize:12, color:'#7A7568', marginTop:1 }}>
+                        {arrivalMode === 'inbound' ? '→ Grand Central' : '→ New Haven'}
+                      </div>
+                    </div>
+                    <span style={{ fontSize:18 }}>🚆</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
         ) : (
+          /* ── Step 3: Minute picker (non-train) + Main form ── */
           <form onSubmit={handleSubmit} className="fade" style={{ background:'white', borderRadius:20, padding:24, boxShadow:'0 2px 16px rgba(0,0,0,.06)' }}>
-            <h2 style={{ fontFamily:'Georgia,serif', fontSize:18, color:'#201C18', marginBottom:20 }}>
-              {returning ? `Welcome back! 👋` : 'Join the waitlist'}
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+              <button type="button" onClick={() => setStep('arrival-mode')}
+                style={{ background:'none', border:'none', cursor:'pointer', color:'#B0AB9E', fontSize:20, padding:0, lineHeight:1 }}>←</button>
+              <h2 style={{ fontFamily:'Georgia,serif', fontSize:18, color:'#201C18' }}>
+                {returning ? `Welcome back! 👋` : step === 'form' && arrivalMode === 'other' ? "How far out are you? 🚶" : 'Join the waitlist'}
+              </h2>
+            </div>
+
+            {/* Arrival summary chip or minute picker */}
+            {arrivalMode === 'other' ? (
+              <div style={{ marginBottom:20 }}>
+                <div style={{ background:'#F8F5F0', borderRadius:14, padding:16, marginBottom:10 }}>
+                  <div style={{ fontSize:13, color:'#7A7568', marginBottom:12, textAlign:'center' }}>
+                    Minutes until you arrive
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:20 }}>
+                    <button type="button" onClick={() => setWalkMinutes(m => Math.max(1, m-1))}
+                      style={{ width:40, height:40, borderRadius:'50%', border:`2px solid #E3DDD5`, background:'white', fontSize:22, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#7A7568' }}>−</button>
+                    <div style={{ textAlign:'center', minWidth:60 }}>
+                      <div style={{ fontSize:48, fontWeight:700, color:accent, fontFamily:'Georgia,serif', lineHeight:1 }}>{walkMinutes}</div>
+                      <div style={{ fontSize:11, color:'#B0AB9E', marginTop:2 }}>min</div>
+                    </div>
+                    <button type="button" onClick={() => setWalkMinutes(m => Math.min(10, m+1))}
+                      style={{ width:40, height:40, borderRadius:'50%', border:`2px solid #E3DDD5`, background:'white', fontSize:22, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#7A7568' }}>+</button>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginTop:12 }}>
+                    {[1,2,3,5,7,10].map(n => (
+                      <button key={n} type="button" onClick={() => setWalkMinutes(n)}
+                        style={{ padding:'4px 10px', borderRadius:20, border:`1.5px solid ${walkMinutes===n?accent:'#E3DDD5'}`, background:walkMinutes===n?`${accent}12`:'white', color:walkMinutes===n?accent:'#7A7568', fontSize:12, cursor:'pointer' }}>
+                        {n}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ background:`${accent}10`, borderRadius:10, padding:'8px 12px', fontSize:12, color:accent }}>
+                  ⓘ Tables can only be requested up to 10 minutes in advance without a train reservation.
+                </div>
+              </div>
+            ) : selectedTrain ? (
+              <div style={{ display:'flex', alignItems:'center', gap:10, background:'#F0FDF4', border:'1.5px solid #BBF7D0', borderRadius:12, padding:'10px 14px', marginBottom:16 }}>
+                <span style={{ fontSize:20 }}>🚆</span>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#166534' }}>{formatArrTime(selectedTrain.arrivalTime)} · {selectedTrain.minsAway} min</div>
+                  <div style={{ fontSize:11, color:'#166534', opacity:.7 }}>{arrivalMode === 'inbound' ? '→ Grand Central' : '→ New Haven'}</div>
+                </div>
+                <button type="button" onClick={() => setStep('arrival-time')}
+                  style={{ marginLeft:'auto', fontSize:11, color:'#166534', background:'none', border:'none', cursor:'pointer', textDecoration:'underline' }}>
+                  Change
+                </button>
+              </div>
+            ) : null}
+
+            <h2 style={{ fontFamily:'Georgia,serif', fontSize:16, color:'#201C18', marginBottom:16 }}>
+              Your details
             </h2>
 
             {/* ── Phone first ── */}
