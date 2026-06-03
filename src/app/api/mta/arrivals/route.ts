@@ -47,7 +47,7 @@ export async function GET() {
 
     const now    = Math.floor(Date.now() / 1000)
     const trains: TrainArrival[] = []
-    const debugStopIds = new Set<string>() // collect all unique stop IDs for diagnosis
+    const debugStops: Record<string, number[]> = {} // stopId -> [arrivalTimes]
 
     // Safely convert protobuf Long or number to JS number
     function toNum(val: any): number {
@@ -66,18 +66,22 @@ export async function GET() {
 
       for (const stu of tu.stopTimeUpdate ?? []) {
         const stopId = String(stu.stopId ?? '')
-        debugStopIds.add(stopId)
-
-        // Match Darien station — stop 122 in any format (122, 122N, 122S, 122_E, 122_I)
-        if (!stopId.includes('122')) continue
-
         const arrTime = toNum(stu.arrival?.time) || toNum(stu.departure?.time)
         if (!arrTime || arrTime <= now - 120) continue
+
+        // Collect debug info for stops 110-130 (New Haven Line Stamford area)
+        const n = parseInt(stopId)
+        if (n >= 110 && n <= 130) {
+          if (!debugStops[stopId]) debugStops[stopId] = []
+          debugStops[stopId].push(arrTime)
+        }
+
+        // Match Darien station — stop 121 (Darien) or 120 (Noroton Heights)
+        if (!stopId.includes('121') && !stopId.includes('120')) continue
 
         const depTime  = toNum(stu.departure?.time) || arrTime
         const minsAway = Math.round((arrTime - now) / 60)
 
-        // Direction: N/_I = toward NYC (inbound), S/_E = toward New Haven (outbound)
         const isInbound = stopId.includes('_I') || stopId.endsWith('N') ||
                           (tu.trip?.directionId === 1)
 
@@ -100,7 +104,14 @@ export async function GET() {
     return NextResponse.json({
       trains: trains.slice(0, 10),
       updatedAt: now,
-      debug_all_stop_ids: [...debugStopIds].sort().slice(0, 50),
+      debug_stops_110_130: Object.fromEntries(
+        Object.entries(debugStops)
+          .sort(([a],[b]) => parseInt(a)-parseInt(b))
+          .map(([id, times]) => [id, times.sort().slice(0,3).map(t => {
+            const d = new Date(t*1000)
+            return `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`
+          })])
+      ),
     })
 
   } catch (err: any) {
