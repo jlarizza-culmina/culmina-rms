@@ -46,8 +46,7 @@ export async function GET() {
     )
 
     const now    = Math.floor(Date.now() / 1000)
-    const trains: TrainArrival[] = []
-    const debugStops: Record<string, number[]> = {} // stopId -> [arrivalTimes]
+    const trains: TrainArrival[] = [] // stopId -> [arrivalTimes]
 
     // Safely convert protobuf Long or number to JS number
     function toNum(val: any): number {
@@ -60,50 +59,34 @@ export async function GET() {
       return Number(val)
     }
 
-    const DARIEN_STOPS = new Set([118, 120, 121, 124])
+    const DARIEN_STOP_IDS = new Set(['166']) // Darien station GTFS stop_id
 
     for (const entity of feed.entity ?? []) {
       const tu = entity.tripUpdate
       if (!tu) continue
 
-      // Sort all stops in this trip by sequence
-      const allStops = (tu.stopTimeUpdate ?? [])
-        .map((s: any) => ({
-          stopId: parseInt(String(s.stopId ?? '0')),
-          seq:    toNum(s.stopSequence),
-          stu:    s,
-        }))
-        .sort((a: any, b: any) => a.seq - b.seq)
+      // Find Darien stop in this trip
+      const darienStu = (tu.stopTimeUpdate ?? []).find(
+        (s: any) => DARIEN_STOP_IDS.has(String(s.stopId ?? ''))
+      )
+      if (!darienStu) continue
 
-      // Find a Darien-area stop in this trip
-      const darienIdx = allStops.findIndex((s: any) => DARIEN_STOPS.has(s.stopId))
-      if (darienIdx === -1) continue
-
-      const darienEntry = allStops[darienIdx]
-      const stu      = darienEntry.stu
-      const arrTime  = toNum(stu.arrival?.time) || toNum(stu.departure?.time)
+      const arrTime = toNum((darienStu as any).arrival?.time) || toNum((darienStu as any).departure?.time)
       if (!arrTime || arrTime <= now - 120) continue
 
-      const depTime  = toNum(stu.departure?.time) || arrTime
+      const depTime  = toNum((darienStu as any).departure?.time) || arrTime
       const minsAway = Math.round((arrTime - now) / 60)
-      const stopId   = String(darienEntry.stopId)
 
-      // Debug collect
-      if (darienEntry.stopId >= 110 && darienEntry.stopId <= 130) {
-        if (!debugStops[stopId]) debugStops[stopId] = []
-        debugStops[stopId].push(arrTime)
-      }
-
-      // MTA Metro-North direction_id convention (per MTA developer docs):
-      // 0 or 2 = Southbound → toward Grand Central = inbound
-      // 1      = Northbound → toward New Haven/Stamford = outbound
+      // MTA Metro-North direction_id:
+      // 1 = Northbound → away from NYC (toward New Haven) = outbound
+      // 2 = Southbound → toward Grand Central = inbound
       const dirId     = toNum(tu.trip?.directionId)
-      const isInbound = dirId === 0 || dirId === 2
+      const isInbound = dirId === 2   // southbound toward GCT
 
       trains.push({
-        tripId:              tu.trip?.tripId    ?? '',
-        routeId:             tu.trip?.routeId   ?? '',
-        stopId,
+        tripId:              String(tu.trip?.tripId    ?? ''),
+        routeId:             String(tu.trip?.routeId   ?? ''),
+        stopId:              '166',
         arrivalTime:         arrTime,
         departureTime:       depTime,
         minsAway,
@@ -118,14 +101,6 @@ export async function GET() {
     return NextResponse.json({
       trains: trains.slice(0, 10),
       updatedAt: now,
-      debug_stops_110_130: Object.fromEntries(
-        Object.entries(debugStops)
-          .sort(([a],[b]) => parseInt(a)-parseInt(b))
-          .map(([id, times]) => [id, times.sort().slice(0,3).map(t => {
-            const d = new Date(t*1000)
-            return `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`
-          })])
-      ),
     })
 
   } catch (err: any) {
