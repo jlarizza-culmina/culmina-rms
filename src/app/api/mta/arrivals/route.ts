@@ -60,44 +60,60 @@ export async function GET() {
       return Number(val)
     }
 
+    const DARIEN_STOPS = new Set([118, 120, 121, 124])
+
     for (const entity of feed.entity ?? []) {
       const tu = entity.tripUpdate
       if (!tu) continue
 
-      for (const stu of tu.stopTimeUpdate ?? []) {
-        const stopId = String(stu.stopId ?? '')
-        const arrTime = toNum(stu.arrival?.time) || toNum(stu.departure?.time)
-        if (!arrTime || arrTime <= now - 120) continue
+      // Sort all stops in this trip by sequence
+      const allStops = (tu.stopTimeUpdate ?? [])
+        .map((s: any) => ({
+          stopId: parseInt(String(s.stopId ?? '0')),
+          seq:    toNum(s.stopSequence),
+          stu:    s,
+        }))
+        .sort((a: any, b: any) => a.seq - b.seq)
 
-        // Collect debug info for stops 110-130 (New Haven Line Stamford area)
-        const n = parseInt(stopId)
-        if (n >= 110 && n <= 130) {
-          if (!debugStops[stopId]) debugStops[stopId] = []
-          debugStops[stopId].push(arrTime)
-        }
+      // Find a Darien-area stop in this trip
+      const darienIdx = allStops.findIndex((s: any) => DARIEN_STOPS.has(s.stopId))
+      if (darienIdx === -1) continue
 
-        // Match Darien + Noroton Heights area stops (118, 120, 121, 124)
-        if (!['118','120','121','124'].includes(stopId)) continue
+      const darienEntry = allStops[darienIdx]
+      const stu      = darienEntry.stu
+      const arrTime  = toNum(stu.arrival?.time) || toNum(stu.departure?.time)
+      if (!arrTime || arrTime <= now - 120) continue
 
-        const depTime  = toNum(stu.departure?.time) || arrTime
-        const minsAway = Math.round((arrTime - now) / 60)
+      const depTime  = toNum(stu.departure?.time) || arrTime
+      const minsAway = Math.round((arrTime - now) / 60)
+      const stopId   = String(darienEntry.stopId)
 
-        // directionId: 0 = toward New Haven (outbound), 1 = toward GCT (inbound)
-        const dirId = toNum(tu.trip?.directionId)
-        const isInbound = dirId === 1
-
-        trains.push({
-          tripId:              tu.trip?.tripId    ?? '',
-          routeId:             tu.trip?.routeId   ?? '',
-          stopId,
-          arrivalTime:         arrTime,
-          departureTime:       depTime,
-          minsAway,
-          minutesUntilArrival: minsAway,
-          direction:           isInbound ? 'inbound' : 'outbound',
-          status:              minsAway <= 0 ? 'arriving' : 'on time',
-        })
+      // Debug collect
+      if (darienEntry.stopId >= 110 && darienEntry.stopId <= 130) {
+        if (!debugStops[stopId]) debugStops[stopId] = []
+        debugStops[stopId].push(arrTime)
       }
+
+      // Determine direction from adjacent stop IDs
+      // Lower IDs = closer to GCT. Previous stop with higher ID → heading toward GCT = inbound
+      let isInbound = false
+      if (darienIdx > 0) {
+        isInbound = allStops[darienIdx - 1].stopId > darienEntry.stopId
+      } else if (darienIdx < allStops.length - 1) {
+        isInbound = allStops[darienIdx + 1].stopId < darienEntry.stopId
+      }
+
+      trains.push({
+        tripId:              tu.trip?.tripId    ?? '',
+        routeId:             tu.trip?.routeId   ?? '',
+        stopId,
+        arrivalTime:         arrTime,
+        departureTime:       depTime,
+        minsAway,
+        minutesUntilArrival: minsAway,
+        direction:           isInbound ? 'inbound' : 'outbound',
+        status:              minsAway <= 0 ? 'arriving' : 'on time',
+      })
     }
 
     trains.sort((a, b) => a.arrivalTime - b.arrivalTime)
