@@ -516,7 +516,7 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
           {(['plan','schedule','tasks','labels'] as ProdTab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 text-xs font-medium rounded-md capitalize transition-all ${tab === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
-              {t === 'plan' ? '📋 Plan' : '⏱ Schedule'}
+              {t === 'plan' ? '📋 Plan' : t === 'schedule' ? '⏱ Schedule' : t === 'tasks' ? '✅ Tasks' : '🏷 Labels'}
             </button>
           ))}
         </div>

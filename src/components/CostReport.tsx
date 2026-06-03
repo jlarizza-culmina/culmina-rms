@@ -15,12 +15,13 @@ interface RecipeRow {
 }
 
 function computeCostPerServing(recipe: Recipe, library: LibraryIngredient[]): number {
-  return recipe.ingredients.reduce((sum, ing) => {
+  return (recipe.ingredients ?? []).reduce((sum, ing) => {
+    if (!ing) return sum
     if (!ing.library_id) return sum
     const lib = library.find(l => l.id === ing.library_id)
     if (!lib?.purchase_unit_cost || !lib.unit_conversion) return sum
     const cpu = lib.purchase_unit_cost / lib.unit_conversion / (lib.trim_factor || 1)
-    return sum + ing.amount * cpu
+    return sum + (ing.amount ?? 0) * cpu
   }, 0) / (recipe.base_servings || 1)
 }
 
@@ -63,7 +64,7 @@ export default function CostReport({ recipes, library, userId }: Props) {
       const worstFCP = lowestPrice  && costPerServing > 0 ? (costPerServing / lowestPrice)  * 100 : null
       const target   = r.target_food_cost_pct
       const meetsTarget = bestFCP !== null && target ? bestFCP <= target : null
-      const linkedCount = r.ingredients.filter(i => i.library_id).length
+      const linkedCount = (r.ingredients ?? []).filter(i => i?.library_id).length
 
       return { recipe: r, costPerServing, lowestPrice, highestPrice, bestFoodCostPct: bestFCP, worstFoodCostPct: worstFCP, meetsTarget, linkedCount }
     })
