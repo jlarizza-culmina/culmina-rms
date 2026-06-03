@@ -47,6 +47,7 @@ export async function GET() {
 
     const now    = Math.floor(Date.now() / 1000)
     const trains: TrainArrival[] = []
+    const debugStopIds = new Set<string>() // collect all unique stop IDs for diagnosis
 
     // Safely convert protobuf Long or number to JS number
     function toNum(val: any): number {
@@ -65,6 +66,7 @@ export async function GET() {
 
       for (const stu of tu.stopTimeUpdate ?? []) {
         const stopId = String(stu.stopId ?? '')
+        debugStopIds.add(stopId)
 
         // Match Darien station — stop 122 in any format (122, 122N, 122S, 122_E, 122_I)
         if (!stopId.includes('122')) continue
@@ -98,6 +100,7 @@ export async function GET() {
     return NextResponse.json({
       trains: trains.slice(0, 10),
       updatedAt: now,
+      debug_all_stop_ids: [...debugStopIds].sort().slice(0, 50),
     })
 
   } catch (err: any) {
