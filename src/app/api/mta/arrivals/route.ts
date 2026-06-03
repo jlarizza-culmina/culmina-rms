@@ -98,7 +98,6 @@ export async function GET() {
     return NextResponse.json({
       trains: trains.slice(0, 10),
       updatedAt: now,
-      stopIds: DARIEN_STOP_IDS,
     })
 
   } catch (err: any) {
