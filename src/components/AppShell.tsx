@@ -8,6 +8,7 @@ import ModuleLauncher from './ModuleLauncher'
 import RecipeApp from './RecipeApp'
 import LibraryModule from './LibraryModule'
 import ProductionModule from './ProductionModule'
+import StaffOpsModule from './StaffOpsModule'
 import AnalyticsModule from './AnalyticsModule'
 import WaitlistModule from './WaitlistModule'
 import MenuModule from './MenuModule'
@@ -327,6 +328,18 @@ export default function AppShell({ user }: Props) {
   }
 
   // ── Library ────────────────────────────────────────────────
+  if (module === 'staff') {
+    return (
+      <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
+        <TopBar />
+        <div className="flex-1 overflow-hidden h-full">
+          <StaffOpsModule userId={user.id} restaurantId={restaurant.id} />
+        </div>
+      </div>
+    )
+  }
+
   if (module === 'queue') {
     return (
       <div className="h-screen flex flex-col overflow-hidden">

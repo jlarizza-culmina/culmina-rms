@@ -58,6 +58,13 @@ const MODULES: ModuleCard[] = [
     color: '#C05A2A',
   },
   {
+    module: 'staff',
+    icon: '👥',
+    label: 'Staff & Ops',
+    description: 'Roles, tasks & labels',
+    color: '#6B7280',
+  },
+  {
     module: 'library',
     icon: '📦',
     label: 'Library',
