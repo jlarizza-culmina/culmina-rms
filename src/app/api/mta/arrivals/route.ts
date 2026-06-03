@@ -94,14 +94,11 @@ export async function GET() {
         debugStops[stopId].push(arrTime)
       }
 
-      // Determine direction from adjacent stop IDs
-      // Lower IDs = closer to GCT. Previous stop with higher ID → heading toward GCT = inbound
-      let isInbound = false
-      if (darienIdx > 0) {
-        isInbound = allStops[darienIdx - 1].stopId > darienEntry.stopId
-      } else if (darienIdx < allStops.length - 1) {
-        isInbound = allStops[darienIdx + 1].stopId < darienEntry.stopId
-      }
+      // MTA Metro-North direction_id convention (per MTA developer docs):
+      // 0 or 2 = Southbound → toward Grand Central = inbound
+      // 1      = Northbound → toward New Haven/Stamford = outbound
+      const dirId     = toNum(tu.trip?.directionId)
+      const isInbound = dirId === 0 || dirId === 2
 
       trains.push({
         tripId:              tu.trip?.tripId    ?? '',
