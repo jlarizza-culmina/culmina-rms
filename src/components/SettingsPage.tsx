@@ -6,6 +6,7 @@ import type { AppContext } from './AppShell'
 import AIIngredientImporter from './AIIngredientImporter'
 import NutritionEnricher from './NutritionEnricher'
 import GlobalIngredientMapper from './GlobalIngredientMapper'
+import StaffOpsModule from './StaffOpsModule'
 
 interface Props {
   ctx: AppContext
@@ -14,7 +15,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'staff'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -225,6 +226,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     { key: 'general',      label: 'General' },
     { key: 'locations',    label: 'Locations' },
     { key: 'branding',     label: 'Branding' },
+    { key: 'staff',        label: '👥 Staff & Roles' },
     { key: 'queue',          label: 'Queue' },
     { key: 'library_import', label: '✨ AI Library Import' },
     { key: 'nutrition',       label: '🥦 Nutrition' },
@@ -646,6 +648,17 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
               userId={userId}
               restaurantId={ctx.restaurant.id}
               onImported={count => setImportSuccess(count)}
+            />
+          </div>
+        )}
+
+        {/* ── Staff & Roles tab ── */}
+        {tab === 'staff' && (
+          <div className="-mx-6 -mb-6 h-full overflow-hidden">
+            <StaffOpsModule
+              userId={userId}
+              restaurantId={ctx.restaurant.id}
+              locationId={ctx.locations?.[0]?.id}
             />
           </div>
         )}

@@ -45,9 +45,10 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
   const [loading, setLoading] = useState(true)
 
   // Fat tail state
-  const [minCovers,   setMinCovers]   = useState(50)  // assumed weekly covers per recipe
+  const [minCovers,   setMinCovers]   = useState(50)
   const [riskFilter,  setRiskFilter]  = useState<'all' | 'tail' | 'monitor'>('all')
   const [sortFat,     setSortFat]     = useState<'coverPct' | 'recipeCount' | 'name'>('coverPct')
+  const [typeFilter,  setTypeFilter]  = useState<'all' | 'food' | 'beverages'>('all')
 
   useEffect(() => {
     async function load() {
@@ -71,9 +72,13 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
 
   // ── Fat tail computation ──────────────────────────────────────
   const fatTailStats = useMemo((): IngredientStat[] => {
-    const activeRecipes = recipes.filter(r =>
-      r.menu_status === 'on_menu' || r.menu_status === 'orderable' || r.menu_status === 'special'
-    )
+    const activeRecipes = recipes.filter(r => {
+      const onMenu = r.menu_status === 'on_menu' || r.menu_status === 'orderable' || r.menu_status === 'special'
+      if (!onMenu) return false
+      if (typeFilter === 'food')      return r.recipe_type === 'food'
+      if (typeFilter === 'beverages') return r.recipe_type !== 'food'
+      return true
+    })
     if (!activeRecipes.length) return []
 
     const statsMap: Record<string, { names: string[]; covers: number; qty: number; unit: string }> = {}
@@ -105,7 +110,7 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
       if (sortFat === 'recipeCount') return a.recipeCount - b.recipeCount
       return a.name.localeCompare(b.name)
     })
-  }, [recipes, minCovers, sortFat])
+  }, [recipes, minCovers, sortFat, typeFilter])
 
   const filteredFat = useMemo(() =>
     riskFilter === 'all' ? fatTailStats : fatTailStats.filter(s => s.risk === riskFilter),
@@ -163,6 +168,19 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
 
             {/* Controls */}
             <div className="flex items-center gap-4 mb-4 flex-wrap">
+              {/* Type filter */}
+              <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5">
+                {([
+                  { key: 'all',       label: `All (${recipes.filter(r => r.menu_status === 'on_menu' || r.menu_status === 'orderable' || r.menu_status === 'special').length})` },
+                  { key: 'food',      label: '🍽 Food' },
+                  { key: 'beverages', label: '🍸 Beverages' },
+                ] as const).map(f => (
+                  <button key={f.key} onClick={() => setTypeFilter(f.key)}
+                    className={`text-xs px-3 py-1 rounded-md transition-all font-medium ${typeFilter === f.key ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-[--muted]">Weekly covers / recipe</label>
                 <input type="number" min="1" value={minCovers}
@@ -170,7 +188,7 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
                   className="w-16 px-2 py-1 text-xs border border-[--border-2] rounded-lg outline-none focus:border-[--accent] text-center" />
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-[--muted]">Show:</span>
+                <span className="text-xs text-[--muted]">Risk:</span>
                 {(['all','tail','monitor'] as const).map(f => (
                   <button key={f} onClick={() => setRiskFilter(f)}
                     className={`text-[11px] px-2.5 py-0.5 rounded-full border capitalize transition-colors ${riskFilter === f ? 'bg-[--accent] text-white border-[--accent]' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
