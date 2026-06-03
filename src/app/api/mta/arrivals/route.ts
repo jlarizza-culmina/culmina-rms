@@ -59,39 +59,36 @@ export async function GET() {
       return Number(val)
     }
 
-    const DARIEN_STOP_IDS = new Set(['166']) // Darien station GTFS stop_id
+    const DARIEN_STOP_IDS = new Set(['118','120','121','124'])
 
     for (const entity of feed.entity ?? []) {
       const tu = entity.tripUpdate
       if (!tu) continue
 
-      // Collect ALL stop IDs for debug
-      for (const s of tu.stopTimeUpdate ?? []) {
-        allStopIds.add(String((s as any).stopId ?? ''))
-      }
+      const stopTimes = (tu.stopTimeUpdate ?? []) as any[]
 
-      // Find Darien stop in this trip
-      const darienStu = (tu.stopTimeUpdate ?? []).find(
-        (s: any) => DARIEN_STOP_IDS.has(String(s.stopId ?? ''))
-      )
+      // Collect ALL stop IDs for debug
+      for (const s of stopTimes) allStopIds.add(String(s.stopId ?? ''))
+
+      // Find Darien-area stop
+      const darienStu = stopTimes.find(s => DARIEN_STOP_IDS.has(String(s.stopId ?? '')))
       if (!darienStu) continue
 
-      const arrTime = toNum((darienStu as any).arrival?.time) || toNum((darienStu as any).departure?.time)
+      const arrTime = toNum(darienStu.arrival?.time) || toNum(darienStu.departure?.time)
       if (!arrTime || arrTime <= now - 120) continue
 
-      const depTime  = toNum((darienStu as any).departure?.time) || arrTime
+      const depTime  = toNum(darienStu.departure?.time) || arrTime
       const minsAway = Math.round((arrTime - now) / 60)
 
-      // MTA Metro-North direction_id:
-      // 1 = Northbound → away from NYC (toward New Haven) = outbound
-      // 2 = Southbound → toward Grand Central = inbound
-      const dirId     = toNum(tu.trip?.directionId)
-      const isInbound = dirId === 2   // southbound toward GCT
+      // Direction: look at the terminal (last remaining stop in this trip).
+      // Inbound trains end at GCT (stop_id "1"). Outbound end at New Haven area (high IDs).
+      const lastStopId = parseInt(String(stopTimes[stopTimes.length - 1]?.stopId ?? '999'))
+      const isInbound  = lastStopId <= 5
 
       trains.push({
-        tripId:              String(tu.trip?.tripId    ?? ''),
-        routeId:             String(tu.trip?.routeId   ?? ''),
-        stopId:              '166',
+        tripId:              String(tu.trip?.tripId  ?? ''),
+        routeId:             String(tu.trip?.routeId ?? ''),
+        stopId:              String(darienStu.stopId ?? ''),
         arrivalTime:         arrTime,
         departureTime:       depTime,
         minsAway,
