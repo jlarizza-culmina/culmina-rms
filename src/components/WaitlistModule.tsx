@@ -231,6 +231,21 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
                               <span>·</span>
                               <span className="font-mono">{s.phone}</span>
                             </div>
+                            {s.estimated_arrival_at && (
+                              <div className="text-[11px] mt-1 flex items-center gap-1">
+                                <span>{s.arrival_mode === 'inbound' ? '🚆→NYC' : s.arrival_mode === 'outbound' ? '🚆→NH' : '🚶'}</span>
+                                <span className="font-medium text-[--accent]">
+                                  {(() => {
+                                    const d = new Date(s.estimated_arrival_at)
+                                    const h = d.getHours() % 12 || 12
+                                    const m = String(d.getMinutes()).padStart(2,'0')
+                                    const ap = d.getHours() >= 12 ? 'PM' : 'AM'
+                                    const minsAway = Math.round((d.getTime() - Date.now()) / 60000)
+                                    return `${h}:${m} ${ap}${minsAway > 0 ? ` · ${minsAway} min` : minsAway > -5 ? ' · arriving' : ''}`
+                                  })()}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex-shrink-0 capitalize ${style.badge}`}>

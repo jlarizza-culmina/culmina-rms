@@ -459,6 +459,8 @@ export interface WaitlistSession {
   seated_at?: string | null
   train_id?: string | null
   estimated_arrival?: string | null
+  estimated_arrival_at?: string | null
+  arrival_mode?: 'inbound' | 'outbound' | 'other' | null
   notes: string
   created_at?: string
 }
