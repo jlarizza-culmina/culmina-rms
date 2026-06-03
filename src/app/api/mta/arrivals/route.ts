@@ -16,7 +16,6 @@ export interface TrainArrival {
 }
 
 const MNR_FEED = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr'
-const DARIEN_STOP_IDS = ['122', '122_E', '122_I', '122N', '122S']
 
 export async function GET() {
   try {
@@ -49,32 +48,47 @@ export async function GET() {
     const now    = Math.floor(Date.now() / 1000)
     const trains: TrainArrival[] = []
 
+    // Safely convert protobuf Long or number to JS number
+    function toNum(val: any): number {
+      if (!val) return 0
+      if (typeof val === 'number') return val
+      if (typeof val === 'object' && val !== null) {
+        if (typeof val.toNumber === 'function') return val.toNumber()
+        if ('low' in val) return val.low + val.high * 0x100000000
+      }
+      return Number(val)
+    }
+
     for (const entity of feed.entity ?? []) {
       const tu = entity.tripUpdate
       if (!tu) continue
 
       for (const stu of tu.stopTimeUpdate ?? []) {
         const stopId = String(stu.stopId ?? '')
-        if (!DARIEN_STOP_IDS.some(id => stopId.startsWith(id))) continue
 
-        const arrTime = Number(stu.arrival?.time ?? stu.departure?.time ?? 0)
-        if (arrTime <= now - 60) continue // skip trains already departed
+        // Match Darien station — stop 122 in any format (122, 122N, 122S, 122_E, 122_I)
+        if (!stopId.includes('122')) continue
 
-        const depTime  = Number(stu.departure?.time ?? stu.arrival?.time ?? 0)
+        const arrTime = toNum(stu.arrival?.time) || toNum(stu.departure?.time)
+        if (!arrTime || arrTime <= now - 120) continue
+
+        const depTime  = toNum(stu.departure?.time) || arrTime
         const minsAway = Math.round((arrTime - now) / 60)
 
+        // Direction: N/_I = toward NYC (inbound), S/_E = toward New Haven (outbound)
+        const isInbound = stopId.includes('_I') || stopId.endsWith('N') ||
+                          (tu.trip?.directionId === 1)
+
         trains.push({
-          tripId:               tu.trip?.tripId ?? '',
-          routeId:              tu.trip?.routeId ?? '',
+          tripId:              tu.trip?.tripId    ?? '',
+          routeId:             tu.trip?.routeId   ?? '',
           stopId,
-          arrivalTime:          arrTime,
-          departureTime:        depTime,
+          arrivalTime:         arrTime,
+          departureTime:       depTime,
           minsAway,
-          minutesUntilArrival:  minsAway,
-          direction:    stopId.includes('_N') || stopId.includes('N') ? 'inbound' : 'outbound',
-          status:       stu.scheduleRelationship === 1 ? 'skipped'
-                      : stu.scheduleRelationship === 2 ? 'no data'
-                      : minsAway <= 0 ? 'arriving' : 'on time',
+          minutesUntilArrival: minsAway,
+          direction:           isInbound ? 'inbound' : 'outbound',
+          status:              minsAway <= 0 ? 'arriving' : 'on time',
         })
       }
     }
