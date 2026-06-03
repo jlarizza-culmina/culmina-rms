@@ -20,7 +20,6 @@ const MNR_FEED = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fg
 export async function GET() {
   try {
     const res = await fetch(MNR_FEED, {
-      headers: { 'x-api-key': process.env.MTA_API_KEY ?? '' },
       next: { revalidate: 30 },
     })
 
@@ -46,7 +45,8 @@ export async function GET() {
     )
 
     const now    = Math.floor(Date.now() / 1000)
-    const trains: TrainArrival[] = [] // stopId -> [arrivalTimes]
+    const trains: TrainArrival[] = []
+    const allStopIds = new Set<string>() // debug: collect every stop_id in the feed
 
     // Safely convert protobuf Long or number to JS number
     function toNum(val: any): number {
@@ -64,6 +64,11 @@ export async function GET() {
     for (const entity of feed.entity ?? []) {
       const tu = entity.tripUpdate
       if (!tu) continue
+
+      // Collect ALL stop IDs for debug
+      for (const s of tu.stopTimeUpdate ?? []) {
+        allStopIds.add(String((s as any).stopId ?? ''))
+      }
 
       // Find Darien stop in this trip
       const darienStu = (tu.stopTimeUpdate ?? []).find(
@@ -101,6 +106,8 @@ export async function GET() {
     return NextResponse.json({
       trains: trains.slice(0, 10),
       updatedAt: now,
+      debug_total_stop_ids: allStopIds.size,
+      debug_all_stop_ids: [...allStopIds].sort((a,b) => parseInt(a)-parseInt(b)),
     })
 
   } catch (err: any) {
