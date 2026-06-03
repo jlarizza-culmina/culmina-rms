@@ -334,7 +334,7 @@ export default function AppShell({ user }: Props) {
         <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-hidden h-full">
-          <StaffOpsModule userId={user.id} restaurantId={restaurant.id} />
+          <StaffOpsModule userId={user.id} restaurantId={restaurant.id} locationId={locations[0]?.id} />
         </div>
       </div>
     )

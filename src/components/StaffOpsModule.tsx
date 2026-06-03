@@ -1,9 +1,12 @@
 'use client'
 // src/components/StaffOpsModule.tsx
 // Build 1: Staff management + custom roles with entitlement matrix
+// Build 2: Tasks (template builder + daily checklist + kitchen PIN mode)
+// Build 3: Labels (prep labels + QR codes + HACCP print)
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
+import { TasksTab, LabelsTab } from './StaffOpsTasksLabels'
 
 // ── Types ─────────────────────────────────────────────────────
 interface Role {
@@ -33,7 +36,7 @@ interface StaffMember {
   role?: Role
 }
 
-type OpsTab = 'staff' | 'roles'
+type OpsTab = 'staff' | 'roles' | 'tasks' | 'labels'
 
 const MODULES = [
   { key: 'recipes',    label: 'Recipes' },
@@ -55,26 +58,30 @@ const ROLE_COLORS = [
 interface Props {
   userId: string
   restaurantId?: string
+  locationId?: string
 }
 
 // ── Component ─────────────────────────────────────────────────
-export default function StaffOpsModule({ userId, restaurantId }: Props) {
+export default function StaffOpsModule({ userId, restaurantId, locationId = '' }: Props) {
   const supabase = createClient()
   const [tab,     setTab]     = useState<OpsTab>('staff')
   const [roles,   setRoles]   = useState<Role[]>([])
   const [staff,   setStaff]   = useState<StaffMember[]>([])
+  const [recipes, setRecipes] = useState<{id:string;name:string}[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     if (!restaurantId) return
     setLoading(true)
-    const [{ data: r }, { data: s }] = await Promise.all([
+    const [{ data: r }, { data: s }, { data: rec }] = await Promise.all([
       supabase.from('app_roles').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
       supabase.from('staff_members').select('*').eq('restaurant_id', restaurantId).order('name'),
+      supabase.from('recipes').select('id, name').eq('restaurant_id', restaurantId).order('name'),
     ])
     const roleList = r ?? []
     setRoles(roleList)
     setStaff((s ?? []).map((m: any) => ({ ...m, role: roleList.find((rl: Role) => rl.id === m.role_id) })))
+    setRecipes(rec ?? [])
     setLoading(false)
   }, [restaurantId])
 
@@ -94,7 +101,7 @@ export default function StaffOpsModule({ userId, restaurantId }: Props) {
           <h1 className="font-serif text-xl font-medium text-[--text]">Staff & Operations</h1>
         </div>
         <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 w-fit">
-          {([['staff','👥 Staff'], ['roles','🔐 Roles']] as [OpsTab, string][]).map(([key, label]) => (
+          {([['staff','👥 Staff'], ['roles','🔐 Roles'], ['tasks','✅ Tasks'], ['labels','🏷 Labels']] as [OpsTab, string][]).map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${tab === key ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
               {label}
@@ -106,6 +113,8 @@ export default function StaffOpsModule({ userId, restaurantId }: Props) {
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {tab === 'staff'  && <StaffTab   staff={staff} roles={roles} restaurantId={restaurantId!} userId={userId} onRefresh={load} supabase={supabase} />}
         {tab === 'roles'  && <RolesTab   roles={roles} restaurantId={restaurantId!} onRefresh={load} supabase={supabase} />}
+        {tab === 'tasks'  && <TasksTab   restaurantId={restaurantId!} locationId={locationId} roles={roles} staff={staff} supabase={supabase} />}
+        {tab === 'labels' && <LabelsTab  restaurantId={restaurantId!} staff={staff} recipes={recipes} supabase={supabase} />}
       </div>
     </div>
   )
