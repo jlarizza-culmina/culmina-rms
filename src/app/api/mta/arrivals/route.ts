@@ -10,6 +10,7 @@ export interface TrainArrival {
   arrivalTime: number
   departureTime: number
   minsAway: number
+  minutesUntilArrival: number   // alias for minsAway — used by useTrainTiming
   direction: 'inbound' | 'outbound'
   status: string
 }
@@ -63,12 +64,13 @@ export async function GET() {
         const minsAway = Math.round((arrTime - now) / 60)
 
         trains.push({
-          tripId:       tu.trip?.tripId ?? '',
-          routeId:      tu.trip?.routeId ?? '',
+          tripId:               tu.trip?.tripId ?? '',
+          routeId:              tu.trip?.routeId ?? '',
           stopId,
-          arrivalTime:  arrTime,
-          departureTime: depTime,
+          arrivalTime:          arrTime,
+          departureTime:        depTime,
           minsAway,
+          minutesUntilArrival:  minsAway,
           direction:    stopId.includes('_N') || stopId.includes('N') ? 'inbound' : 'outbound',
           status:       stu.scheduleRelationship === 1 ? 'skipped'
                       : stu.scheduleRelationship === 2 ? 'no data'
