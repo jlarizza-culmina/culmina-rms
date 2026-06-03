@@ -76,14 +76,15 @@ export async function GET() {
           debugStops[stopId].push(arrTime)
         }
 
-        // Match Darien station — stop 121 (Darien) or 120 (Noroton Heights)
-        if (!stopId.includes('121') && !stopId.includes('120')) continue
+        // Match Darien + Noroton Heights area stops (118, 120, 121, 124)
+        if (!['118','120','121','124'].includes(stopId)) continue
 
         const depTime  = toNum(stu.departure?.time) || arrTime
         const minsAway = Math.round((arrTime - now) / 60)
 
-        const isInbound = stopId.includes('_I') || stopId.endsWith('N') ||
-                          (tu.trip?.directionId === 1)
+        // directionId: 0 = toward New Haven (outbound), 1 = toward GCT (inbound)
+        const dirId = toNum(tu.trip?.directionId)
+        const isInbound = dirId === 1
 
         trains.push({
           tripId:              tu.trip?.tripId    ?? '',
