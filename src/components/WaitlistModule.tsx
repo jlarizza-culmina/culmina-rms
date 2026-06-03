@@ -123,6 +123,55 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
   const baseUrl  = typeof window !== 'undefined' ? window.location.origin : ''
   const joinUrl  = `${baseUrl}/join/${locationId}`
 
+  // Sort state for the table
+  const [sortKey, setSortKey] = useState<'position'|'party_size'|'mins_away'>('position')
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  // Format arrival time
+  function fmtArrival(iso: string | null | undefined): { time: string; mins: number } | null {
+    if (!iso) return null
+    const d = new Date(iso)
+    const h = d.getHours() % 12 || 12
+    const m = String(d.getMinutes()).padStart(2,'0')
+    const ap = d.getHours() >= 12 ? 'PM' : 'AM'
+    const mins = Math.round((d.getTime() - Date.now()) / 60000)
+    return { time: `${h}:${m} ${ap}`, mins }
+  }
+
+  // Group active sessions by arrival train for the train summary
+  const active = sessions.filter(s => s.status === 'waiting' || s.status === 'notified')
+
+  const trainSummary = (() => {
+    const groups: Record<string, { time: string; mode: string; waiting: number; notified: number; covers: number }> = {}
+    for (const s of active) {
+      const arr = fmtArrival(s.estimated_arrival_at)
+      const key = arr ? arr.time : 'walk-in'
+      if (!groups[key]) groups[key] = { time: arr?.time ?? 'Walk-in', mode: s.arrival_mode ?? 'other', waiting: 0, notified: 0, covers: 0 }
+      if (s.status === 'waiting')  groups[key].waiting++
+      if (s.status === 'notified') groups[key].notified++
+      groups[key].covers += s.party_size
+    }
+    return Object.values(groups).sort((a, b) => a.time.localeCompare(b.time))
+  })()
+
+  // Sorted + indexed sessions for table
+  const sortedSessions = [...active].sort((a, b) => {
+    const aArr = fmtArrival(a.estimated_arrival_at)
+    const bArr = fmtArrival(b.estimated_arrival_at)
+    const aPos = sessions.filter(s => s.status === 'waiting').indexOf(a) + 1
+    const bPos = sessions.filter(s => s.status === 'waiting').indexOf(b) + 1
+    let cmp = 0
+    if (sortKey === 'position')  cmp = aPos - bPos
+    if (sortKey === 'party_size') cmp = a.party_size - b.party_size
+    if (sortKey === 'mins_away')  cmp = (aArr?.mins ?? 999) - (bArr?.mins ?? 999)
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
@@ -200,84 +249,152 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
               </div>
             </div>
 
-            {/* Session cards */}
+            {/* Train arrival summary */}
+            {trainSummary.length > 0 && (
+              <div className="bg-white rounded-xl border border-[--border] mb-4 overflow-hidden">
+                <div className="bg-[--surface-2] px-4 py-2 border-b border-[--border] grid grid-cols-5 gap-2">
+                  {['Arrival','Direction','Waiting','Notified','Covers'].map(h => (
+                    <div key={h} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint]">{h}</div>
+                  ))}
+                </div>
+                {trainSummary.map(t => (
+                  <div key={t.time} className="grid grid-cols-5 gap-2 px-4 py-2.5 border-b border-[--border] last:border-0 text-xs">
+                    <div className="font-medium text-[--text]">{t.time}</div>
+                    <div className="text-[--muted]">
+                      {t.mode === 'inbound' ? '🚆→NYC' : t.mode === 'outbound' ? '🚆→NH' : '🚶 Walk-in'}
+                    </div>
+                    <div className="text-[--text]">{t.waiting > 0 ? <span className="font-medium">{t.waiting}</span> : <span className="text-[--hint]">—</span>}</div>
+                    <div className="text-amber-600">{t.notified > 0 ? <span className="font-medium">{t.notified}</span> : <span className="text-[--hint]">—</span>}</div>
+                    <div className="font-medium text-[--accent]">{t.covers}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Queue table */}
             {loading ? (
               <div className="text-center py-10 text-[--muted] text-sm">Loading queue…</div>
-            ) : sessions.length === 0 ? (
+            ) : active.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-4xl mb-3 opacity-20">🪑</div>
                 <p className="text-sm text-[--muted]">Queue is empty.</p>
                 <p className="text-xs text-[--hint] mt-1">Share the QR code or join link with guests.</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {sessions.map((s, i) => {
-                  const style = STATUS_STYLES[s.status]
+              <div className="bg-white rounded-xl border border-[--border] overflow-hidden">
+                {/* Table header */}
+                <div className="bg-[--surface-2] border-b border-[--border] grid text-[10px] font-semibold uppercase tracking-wide text-[--hint]"
+                  style={{ gridTemplateColumns: '40px 1fr 110px 80px 90px 90px 100px 110px 32px 32px 80px' }}>
+                  {[
+                    { key: 'position',   label: '#' },
+                    { key: null,         label: 'Name' },
+                    { key: null,         label: 'Phone' },
+                    { key: 'party_size', label: 'Party' },
+                    { key: null,         label: 'Direction' },
+                    { key: null,         label: 'Train' },
+                    { key: 'mins_away',  label: 'ETA' },
+                    { key: null,         label: 'In queue' },
+                    { key: null,         label: '' },
+                    { key: null,         label: '' },
+                    { key: null,         label: '' },
+                  ].map((col, i) => (
+                    <div key={i} className={`px-2 py-2.5 ${col.key ? 'cursor-pointer hover:text-[--text] select-none' : ''} flex items-center gap-0.5`}
+                      onClick={() => col.key && toggleSort(col.key as any)}>
+                      {col.label}
+                      {col.key && sortKey === col.key && <span className="text-[--accent]">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Table rows */}
+                {sortedSessions.map((s, i) => {
+                  const arr     = fmtArrival(s.estimated_arrival_at)
                   const isActing = acting !== null && acting?.startsWith(s.id)
+                  const pos = sessions.filter(x => x.status === 'waiting').indexOf(s) + 1
+                  const urgentColor = arr
+                    ? arr.mins <= 5  ? 'text-red-500'
+                    : arr.mins <= 15 ? 'text-amber-500'
+                    : 'text-[--accent]'
+                    : 'text-[--muted]'
                   return (
-                    <div key={s.id} className={`bg-white rounded-xl border border-[--border] p-4 transition-opacity ${style.row}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3">
-                          {/* Position number */}
-                          <div className="w-7 h-7 rounded-full bg-[--surface-2] flex items-center justify-center text-xs font-medium text-[--muted] flex-shrink-0 mt-0.5">
-                            {s.status === 'waiting' ? i + 1 : '·'}
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium text-[--text]">{s.guest_name}</div>
-                            <div className="text-[11px] text-[--muted] mt-0.5 flex items-center gap-2">
-                              <span>Party of {s.party_size}</span>
-                              <span>·</span>
-                              <span>{waitTime(s.joined_at)}</span>
-                              <span>·</span>
-                              <span className="font-mono">{s.phone}</span>
-                            </div>
-                            {s.estimated_arrival_at && (
-                              <div className="text-[11px] mt-1 flex items-center gap-1">
-                                <span>{s.arrival_mode === 'inbound' ? '🚆→NYC' : s.arrival_mode === 'outbound' ? '🚆→NH' : '🚶'}</span>
-                                <span className="font-medium text-[--accent]">
-                                  {(() => {
-                                    const d = new Date(s.estimated_arrival_at)
-                                    const h = d.getHours() % 12 || 12
-                                    const m = String(d.getMinutes()).padStart(2,'0')
-                                    const ap = d.getHours() >= 12 ? 'PM' : 'AM'
-                                    const minsAway = Math.round((d.getTime() - Date.now()) / 60000)
-                                    return `${h}:${m} ${ap}${minsAway > 0 ? ` · ${minsAway} min` : minsAway > -5 ? ' · arriving' : ''}`
-                                  })()}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                    <div key={s.id}
+                      className={`grid border-b border-[--border] last:border-0 items-center text-xs hover:bg-[--surface-2]/50 transition-colors ${s.status === 'notified' ? 'bg-amber-50/40' : ''}`}
+                      style={{ gridTemplateColumns: '40px 1fr 110px 80px 90px 90px 100px 110px 32px 32px 80px' }}>
+
+                      {/* # */}
+                      <div className="px-2 py-2.5">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${s.status === 'waiting' ? 'bg-[--surface-2] text-[--muted]' : 'bg-amber-100 text-amber-600'}`}>
+                          {s.status === 'waiting' ? pos || i+1 : '!'}
                         </div>
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border flex-shrink-0 capitalize ${style.badge}`}>
-                          {s.status}
-                        </span>
                       </div>
 
-                      {/* Actions */}
-                      {(s.status === 'waiting' || s.status === 'notified') && (
-                        <div className="flex gap-2 mt-3 pt-3 border-t border-[--border]">
-                          {s.status === 'waiting' && (
-                            <button onClick={() => doAction(s.id, 'notify')} disabled={!!isActing}
-                              className="flex-1 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50 transition-colors">
-                              {acting === s.id + 'notify' ? 'Texting…' : '📱 Notify'}
-                            </button>
-                          )}
-                          {s.status === 'notified' && (
-                            <button onClick={() => doAction(s.id, 'notify')} disabled={!!isActing}
-                              className="flex-1 py-1.5 text-xs font-medium border border-[--accent] text-[--accent] rounded-lg hover:bg-[--accent-light] disabled:opacity-50 transition-colors">
-                              Re-notify
-                            </button>
-                          )}
-                          <button onClick={() => doAction(s.id, 'seat')} disabled={!!isActing}
-                            className="flex-1 py-1.5 text-xs font-medium bg-[--green] text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors">
-                            ✓ Seated
+                      {/* Name */}
+                      <div className="px-2 py-2.5 min-w-0">
+                        <div className="font-medium text-[--text] truncate">{s.guest_name}</div>
+                        {s.birthday_month && (
+                          <span className="text-[9px] text-[--accent]">🎂 {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][s.birthday_month-1]}{s.birthday_day ? ` ${s.birthday_day}` : ''}</span>
+                        )}
+                      </div>
+
+                      {/* Phone */}
+                      <div className="px-2 py-2.5 font-mono text-[--muted] text-[11px] truncate">{s.phone}</div>
+
+                      {/* Party */}
+                      <div className="px-2 py-2.5 text-center">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[--accent-light] text-[--accent] text-[11px] font-semibold">{s.party_size}</span>
+                      </div>
+
+                      {/* Direction */}
+                      <div className="px-2 py-2.5 text-[11px] text-[--muted]">
+                        {s.arrival_mode === 'inbound' ? '🚆 →NYC' : s.arrival_mode === 'outbound' ? '🚆 →NH' : '🚶'}
+                      </div>
+
+                      {/* Train time */}
+                      <div className={`px-2 py-2.5 text-[11px] font-medium ${urgentColor}`}>
+                        {arr ? arr.time : '—'}
+                      </div>
+
+                      {/* ETA mins */}
+                      <div className={`px-2 py-2.5 text-[11px] font-semibold ${urgentColor}`}>
+                        {arr
+                          ? arr.mins <= 0 ? 'Arriving' : `${arr.mins} min`
+                          : '—'}
+                      </div>
+
+                      {/* In queue */}
+                      <div className="px-2 py-2.5 text-[11px] text-[--hint]">{waitTime(s.joined_at)}</div>
+
+                      {/* Notify / Re-notify */}
+                      <div className="py-2.5 px-0.5">
+                        {(s.status === 'waiting' || s.status === 'notified') && (
+                          <button onClick={() => doAction(s.id, 'notify')} disabled={!!isActing}
+                            title={s.status === 'notified' ? 'Re-notify' : 'Notify'}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-colors ${s.status === 'waiting' ? 'bg-[--accent] text-white hover:bg-[--accent-dark]' : 'border border-[--accent] text-[--accent] hover:bg-[--accent-light]'} disabled:opacity-40`}>
+                            {acting === s.id+'notify' ? '…' : '📱'}
                           </button>
+                        )}
+                      </div>
+
+                      {/* Seat */}
+                      <div className="py-2.5 px-0.5">
+                        {(s.status === 'waiting' || s.status === 'notified') && (
+                          <button onClick={() => doAction(s.id, 'seat')} disabled={!!isActing}
+                            title="Seat party"
+                            className="w-7 h-7 rounded-lg bg-[--green] text-white flex items-center justify-center text-sm hover:opacity-90 disabled:opacity-40">
+                            {acting === s.id+'seat' ? '…' : '✓'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* No-show */}
+                      <div className="px-2 py-2.5">
+                        {(s.status === 'waiting' || s.status === 'notified') && (
                           <button onClick={() => doAction(s.id, 'no_show')} disabled={!!isActing}
-                            className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 transition-colors">
+                            className="text-[10px] px-2 py-1 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-40">
                             No-show
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   )
                 })}

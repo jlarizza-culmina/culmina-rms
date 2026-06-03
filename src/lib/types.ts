@@ -461,6 +461,8 @@ export interface WaitlistSession {
   estimated_arrival?: string | null
   estimated_arrival_at?: string | null
   arrival_mode?: 'inbound' | 'outbound' | 'other' | null
+  birthday_month?: number | null
+  birthday_day?: number | null
   notes: string
   created_at?: string
 }
