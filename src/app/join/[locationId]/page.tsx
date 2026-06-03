@@ -53,7 +53,7 @@ export default function JoinPage() {
     try {
       const res  = await fetch('/api/mta/arrivals')
       const data = await res.json()
-      setTrains((data.trains ?? []).filter((t: any) => t.direction === dir).slice(0, 5))
+      setTrains((data.trains ?? []).filter((t: any) => t.direction === dir).slice(0, 10))
     } catch { setTrains([]) }
     setTrainsLoading(false)
   }

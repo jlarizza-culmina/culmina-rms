@@ -101,7 +101,7 @@ export async function GET() {
     trains.sort((a, b) => a.arrivalTime - b.arrivalTime)
 
     return NextResponse.json({
-      trains: trains.slice(0, 10),
+      trains: trains.slice(0, 20),
       updatedAt: now,
       debug_total_stop_ids: allStopIds.size,
       debug_all_stop_ids: [...allStopIds].sort((a,b) => parseInt(a)-parseInt(b)),

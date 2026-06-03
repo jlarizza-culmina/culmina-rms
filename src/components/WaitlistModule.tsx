@@ -174,7 +174,7 @@ export default function WaitlistModule({ userId, restaurantId, locations }: Prop
 
             {/* Train arrivals */}
             <div className="mb-4">
-              <TrainBoard direction="outbound" limit={3} />
+              <TrainBoard limit={10} />
             </div>
 
             {/* QR code + join link */}
