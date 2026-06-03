@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase'
 import Auth from '@/components/Auth'
 import AppShell from '@/components/AppShell'
 
+export const dynamic = 'force-dynamic'
+
 export default function Page() {
   const [user, setUser] = useState<User | null | undefined>(undefined)
   const supabase = createClient()
