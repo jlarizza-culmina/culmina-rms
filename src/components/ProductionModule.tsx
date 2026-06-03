@@ -1,14 +1,15 @@
 'use client'
 // src/components/ProductionModule.tsx
-// Daily production planning: covers → portions → shopping list → T-minus schedule
+// Daily production planning: covers → portions → shopping list → T-minus schedule → tasks → labels
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Recipe, LibraryIngredient } from '@/lib/types'
+import { TasksTab, LabelsTab } from './StaffOpsTasksLabels'
 
 // ── Types ─────────────────────────────────────────────────────
 type MenuType = 'morning' | 'aperitivo' | 'dinner' | 'drinks' | 'specials'
-type ProdTab  = 'plan' | 'schedule'
+type ProdTab  = 'plan' | 'schedule' | 'tasks' | 'labels'
 
 const SERVICE_LABELS: Record<MenuType, string> = {
   morning: 'Morning ☕', aperitivo: 'Aperitivo 🍸',
@@ -88,6 +89,8 @@ const PHASE_ICONS: Record<string, string> = {
 export default function ProductionModule({ userId, restaurantId, locationId }: Props) {
   const supabase = createClient()
   const [tab,          setTab]          = useState<ProdTab>('plan')
+  const [roles,        setRoles]        = useState<{id:string;name:string;color:string}[]>([])
+  const [staff,        setStaff]        = useState<{id:string;name:string;role_id:string|null;pin:string|null}[]>([])
   const [date,         setDate]         = useState(tomorrow())
   const [recipes,      setRecipes]      = useState<Recipe[]>([])
   const [library,      setLibrary]      = useState<LibraryIngredient[]>([])
@@ -111,17 +114,21 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
     if (!restaurantId) return
     setLoading(true)
 
-    // Load recipes + library
-    const [{ data: recipeData }, { data: libData }] = await Promise.all([
+    // Load recipes + library + roles + staff
+    const [{ data: recipeData }, { data: libData }, { data: rolesData }, { data: staffData }] = await Promise.all([
       supabase.from('recipes').select('*').eq('restaurant_id', restaurantId).eq('is_active', true),
       supabase.from('ingredient_library').select('*')
         .or(`restaurant_id.eq.${restaurantId},user_id.eq.${userId},user_id.is.null`)
         .eq('is_active', true),
+      supabase.from('app_roles').select('id,name,color').eq('restaurant_id', restaurantId).order('sort_order'),
+      supabase.from('staff_members').select('id,name,role_id,pin').eq('restaurant_id', restaurantId).eq('is_active', true).order('name'),
     ])
     const allRecipes = recipeData ?? []
     const allLibrary = libData ?? []
     setRecipes(allRecipes)
     setLibrary(allLibrary)
+    setRoles(rolesData ?? [])
+    setStaff(staffData ?? [])
     const { data: versions } = await supabase
       .from('menu_versions').select('id, menu_id')
       .eq('is_current', true)
@@ -506,7 +513,7 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
         </div>
         {/* Tabs */}
         <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 w-fit">
-          {(['plan','schedule'] as ProdTab[]).map(t => (
+          {(['plan','schedule','tasks','labels'] as ProdTab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 text-xs font-medium rounded-md capitalize transition-all ${tab === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
               {t === 'plan' ? '📋 Plan' : '⏱ Schedule'}
@@ -697,6 +704,31 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
               })()}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Tasks tab ── */}
+      {tab === 'tasks' && restaurantId && (
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <TasksTab
+            restaurantId={restaurantId}
+            locationId={locationId ?? ''}
+            roles={roles}
+            staff={staff}
+            supabase={supabase}
+          />
+        </div>
+      )}
+
+      {/* ── Labels tab ── */}
+      {tab === 'labels' && restaurantId && (
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <LabelsTab
+            restaurantId={restaurantId}
+            staff={staff}
+            recipes={recipes.map(r => ({ id: r.id, name: r.name }))}
+            supabase={supabase}
+          />
         </div>
       )}
     </div>

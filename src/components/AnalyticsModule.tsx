@@ -83,11 +83,13 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
     activeRecipes.forEach(r => {
       const covers = minCovers
       r.ingredients.forEach(ing => {
+        if (!ing?.name) return          // skip nameless ingredients
         const key = ing.name.toLowerCase().trim()
-        if (!statsMap[key]) statsMap[key] = { names: [], covers: 0, qty: 0, unit: ing.unit }
+        if (!key) return                // skip blank names
+        if (!statsMap[key]) statsMap[key] = { names: [], covers: 0, qty: 0, unit: ing.unit ?? '' }
         if (!statsMap[key].names.includes(r.name)) statsMap[key].names.push(r.name)
         statsMap[key].covers += covers
-        statsMap[key].qty    += ing.amount * covers
+        statsMap[key].qty    += (ing.amount ?? 0) * covers
       })
     })
 
