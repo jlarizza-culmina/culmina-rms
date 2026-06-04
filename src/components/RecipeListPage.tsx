@@ -223,7 +223,7 @@ export default function RecipeListPage({
       {/* ── Importer overlay ── */}
       {showImporter && userId && restaurantId && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-[--surface] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-[--surface] rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] overflow-hidden flex flex-col">
             <RecipeImporter
               userId={userId}
               restaurantId={restaurantId}
