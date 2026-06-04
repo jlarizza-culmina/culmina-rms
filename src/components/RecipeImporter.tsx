@@ -104,7 +104,8 @@ export default function RecipeImporter({ userId, restaurantId, onComplete, onCan
         <button onClick={onCancel} className="text-[--hint] hover:text-[--muted] text-sm px-2">✕</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 min-h-0">
 
         {/* ── UPLOAD STAGE ── */}
         {stage === 'upload' && (
@@ -213,25 +214,6 @@ export default function RecipeImporter({ userId, restaurantId, onComplete, onCan
             </div>
 
             {error && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-
-            {/* Actions */}
-            <div className="flex items-center justify-between pt-2">
-              <div className="text-xs text-[--muted]">
-                {selected.size} of {preview.length} selected
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setStage('upload')}
-                  className="px-4 py-2 border border-[--border-2] text-[--muted] text-xs rounded-lg hover:bg-[--surface-2]">
-                  ← Back
-                </button>
-                <button onClick={doImport} disabled={!selected.size || loading}
-                  className="px-5 py-2 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] disabled:opacity-50 flex items-center gap-2">
-                  {loading
-                    ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Importing…</>
-                    : `Import ${selected.size} recipe${selected.size !== 1 ? 's' : ''}`}
-                </button>
-              </div>
-            </div>
           </div>
         )}
 
@@ -257,6 +239,27 @@ export default function RecipeImporter({ userId, restaurantId, onComplete, onCan
           </div>
         )}
       </div>
+
+      {/* Sticky action footer — preview stage only */}
+      {stage === 'preview' && (
+        <div className="flex-shrink-0 border-t border-[--border] bg-white px-6 py-4 flex items-center justify-between">
+          <div className="text-xs text-[--muted]">
+            {selected.size} of {preview.length} selected
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setStage('upload')}
+              className="px-4 py-2 border border-[--border-2] text-[--muted] text-xs rounded-lg hover:bg-[--surface-2]">
+              ← Back
+            </button>
+            <button onClick={doImport} disabled={!selected.size || loading}
+              className="px-5 py-2 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] disabled:opacity-50 flex items-center gap-2">
+              {loading
+                ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Importing…</>
+                : `Import ${selected.size} recipe${selected.size !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
