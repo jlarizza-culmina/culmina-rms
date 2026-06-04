@@ -95,46 +95,45 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
   const activeRecipe = recipes.find(r => r.id === activeId) ?? null
 
   // ── Load all data ────────────────────────────────────────────
-  useEffect(() => {
-    async function loadAll() {
-      setLoading(true)
-      try {
-        let query = supabase.from('recipes').select('*').order('created_at', { ascending: false })
-        if (restaurantId) query = query.eq('restaurant_id', restaurantId)
-        else query = query.eq('user_id', user.id)
+  const loadAll = useCallback(async () => {
+    setLoading(true)
+    try {
+      let query = supabase.from('recipes').select('*').order('created_at', { ascending: false })
+      if (restaurantId) query = query.eq('restaurant_id', restaurantId)
+      else query = query.eq('user_id', user.id)
 
-        const [{ data: rData }, { data: vData }, { data: lData }, { data: cData }] = await Promise.all([
-          query,
-          supabase.from('vendors').select('*').eq('user_id', user.id).eq('is_active', true).order('name'),
-          supabase.from('ingredient_library').select('*')
-            .or(`user_id.eq.${user.id},user_id.is.null`)
-            .eq('is_active', true).order('name'),
-          supabase.from('shopping_checks').select('recipe_id, ingredient_id, checked').eq('user_id', user.id).eq('checked', true),
-        ])
+      const [{ data: rData }, { data: vData }, { data: lData }, { data: cData }] = await Promise.all([
+        query,
+        supabase.from('vendors').select('*').eq('user_id', user.id).eq('is_active', true).order('name'),
+        supabase.from('ingredient_library').select('*')
+          .or(`user_id.eq.${user.id},user_id.is.null`)
+          .eq('is_active', true).order('name'),
+        supabase.from('shopping_checks').select('recipe_id, ingredient_id, checked').eq('user_id', user.id).eq('checked', true),
+      ])
 
-        if (rData) {
-          const loaded: Recipe[] = rData.map(r => ({ ...r, servings: r.base_servings }))
-          setRecipes(loaded)
-          const sMap: Record<string, number> = {}
-          loaded.forEach(r => { sMap[r.id] = r.base_servings })
-          setServings(sMap)
-        }
-        if (vData) setVendors(vData)
-        if (lData) setLibrary(lData)
-        if (cData) {
-          const cMap: Record<string, Set<string>> = {}
-          cData.forEach(c => {
-            if (!cMap[c.recipe_id]) cMap[c.recipe_id] = new Set()
-            cMap[c.recipe_id].add(c.ingredient_id)
-          })
-          setChecks(cMap)
-        }
-      } finally {
-        setLoading(false)
+      if (rData) {
+        const loaded: Recipe[] = (rData as any[]).map((r: any) => ({ ...r, servings: r.base_servings }))
+        setRecipes(loaded)
+        const sMap: Record<string, number> = {}
+        loaded.forEach(r => { sMap[r.id] = r.base_servings })
+        setServings(sMap)
       }
+      if (vData) setVendors(vData)
+      if (lData) setLibrary(lData)
+      if (cData) {
+        const cMap: Record<string, Set<string>> = {}
+        ;(cData as any[]).forEach((c: any) => {
+          if (!cMap[c.recipe_id]) cMap[c.recipe_id] = new Set()
+          cMap[c.recipe_id].add(c.ingredient_id)
+        })
+        setChecks(cMap)
+      }
+    } finally {
+      setLoading(false)
     }
-    loadAll()
-  }, [user.id, restaurantId])
+  }, [user.id, restaurantId, supabase])
+
+  useEffect(() => { loadAll() }, [loadAll])
 
   // ── Handlers ─────────────────────────────────────────────────
   const handleAddRecipes = useCallback(async (newRecipes: Omit<Recipe, 'id' | 'user_id' | 'created_at'>[]) => {
@@ -291,6 +290,9 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
           prepSelected={prepSelected}
           onTogglePrepSelect={togglePrepSelect}
           onOpenPrepList={() => setPrepMode(true)}
+          userId={user.id}
+          restaurantId={restaurantId}
+          onRefreshRecipes={loadAll}
         />
       )}
 

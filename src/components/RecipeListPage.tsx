@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from 'react'
 import type { Recipe, MenuItemStatus, RecipeStage, ServiceWareRef, LibraryIngredient } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import { ALLERGENS, SUBCATEGORIES } from '@/lib/ingredientConstants'
+import RecipeImporter from './RecipeImporter'
 
 interface Props {
   recipes: Recipe[]
@@ -15,6 +16,9 @@ interface Props {
   prepSelected: Set<string>
   onTogglePrepSelect: (id: string) => void
   onOpenPrepList: () => void
+  userId?: string
+  restaurantId?: string
+  onRefreshRecipes?: () => void
 }
 
 type SortKey = 'name' | 'recipe_stage' | 'menu_status' | 'created_at' | 'ranking'
@@ -60,8 +64,10 @@ function sortRecipes(recipes: Recipe[], key: SortKey, dir: 'asc' | 'desc'): Reci
 export default function RecipeListPage({
   recipes, library = [], loading, onSelect, onNewRecipe, onShowUnlinked,
   onUpdateRecipe, prepSelected, onTogglePrepSelect, onOpenPrepList,
+  userId = '', restaurantId = '', onRefreshRecipes,
 }: Props) {
   const [tab,         setTab]         = useState<RecipeTab>('food')
+  const [showImporter, setShowImporter] = useState(false)
   const [viewMode,    setViewMode]    = useState<'list' | 'calendar'>('list')
   const [search,      setSearch]      = useState('')
   const [showFilter,  setShowFilter]  = useState(false)
@@ -204,11 +210,32 @@ export default function RecipeListPage({
           title="Toggle calendar view">
           {viewMode === 'calendar' ? '☰ List' : '📅 Calendar'}
         </button>
+        <button onClick={() => setShowImporter(true)}
+          className="px-3 py-1.5 text-xs font-medium border border-[--accent] text-[--accent] rounded-lg hover:bg-[--accent-light] transition-colors">
+          ↑ Import JSON
+        </button>
         <button onClick={onNewRecipe}
           className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] transition-colors">
           + New Recipe
         </button>
       </div>
+
+      {/* ── Importer overlay ── */}
+      {showImporter && userId && restaurantId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-[--surface] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <RecipeImporter
+              userId={userId}
+              restaurantId={restaurantId}
+              onCancel={() => setShowImporter(false)}
+              onComplete={count => {
+                setShowImporter(false)
+                onRefreshRecipes?.()
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div className="bg-white border-b border-[--border] px-6 flex gap-0 flex-shrink-0">
