@@ -2,7 +2,7 @@
 // src/components/RecipeImporter.tsx
 // JSON recipe import: upload file → preview table → bulk insert
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 
 interface PreviewRow {
   name: string; menu_name?: string; ingredients: number
@@ -23,7 +23,6 @@ export default function RecipeImporter({ userId, restaurantId, onComplete, onCan
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const [result,   setResult]   = useState<{ imported: number; errors: string[] } | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   function parseJson(text: string) {
     try {
@@ -110,15 +109,21 @@ export default function RecipeImporter({ userId, restaurantId, onComplete, onCan
         {/* ── UPLOAD STAGE ── */}
         {stage === 'upload' && (
           <div className="max-w-lg mx-auto space-y-4">
-            <div
-              onClick={() => fileRef.current?.click()}
-              className="border-2 border-dashed border-[--border-2] rounded-2xl p-12 text-center cursor-pointer hover:border-[--accent] hover:bg-[--accent-light]/10 transition-all group">
+            <label htmlFor="json-upload"
+              className="border-2 border-dashed border-[--border-2] rounded-2xl p-12 text-center cursor-pointer hover:border-[--accent] hover:bg-[--accent-light]/10 transition-all group block"
+              onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-[--accent]', 'bg-[--accent-light]/10') }}
+              onDragLeave={e => { e.currentTarget.classList.remove('border-[--accent]', 'bg-[--accent-light]/10') }}
+              onDrop={e => {
+                e.preventDefault()
+                const file = e.dataTransfer.files?.[0]
+                if (file) { const r = new FileReader(); r.onload = ev => parseJson(ev.target?.result as string); r.readAsText(file) }
+              }}>
               <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">📂</div>
               <p className="text-sm font-medium text-[--text]">Click to upload a JSON file</p>
               <p className="text-xs text-[--muted] mt-1">or drag and drop</p>
               <p className="text-[11px] text-[--hint] mt-3">Supports Corretto JSON format and standard recipe arrays</p>
-            </div>
-            <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={onFileChange} />
+            </label>
+            <input id="json-upload" type="file" accept=".json,application/json" className="hidden" onChange={onFileChange} />
 
             {/* Or paste JSON */}
             <div className="text-center text-xs text-[--hint]">— or —</div>

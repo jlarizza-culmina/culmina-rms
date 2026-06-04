@@ -114,7 +114,7 @@ export async function POST(req: Request) {
           menu_status:      menuStatus,
           is_active:        true,
           tags,
-          season:           r.season ?? [],
+          seasons:          r.season ?? [],
           ingredients,
           steps,
         }).select('id, name').single()
