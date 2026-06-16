@@ -109,18 +109,6 @@ export default function RecipeView({
   const [variationName,      setVariationName]      = useState('')
   const [serverNotesDraft,   setServerNotesDraft]   = useState(recipe.server_notes ?? '')
 
-  // ── Auto-detect allergens from linked library ingredients ─
-  const detectedAllergens = useMemo(() => {
-    const set = new Set<string>()
-    recipe.ingredients.forEach(ing => {
-      const lib = ing.library_id ? library.find(l => l.id === ing.library_id) : null
-      lib?.allergens?.forEach(a => set.add(a))
-    })
-    return [...set]
-  }, [recipe.ingredients, library])
-
-  const manualAllergens = recipe.allergens ?? []
-  const allAllergens    = [...new Set([...manualAllergens, ...detectedAllergens])]
   const dietary         = recipe.dietary ?? []
 
   // Structured allergen rollup (Gap 1 Phase 1b) — from confirmed library ingredients
@@ -136,7 +124,6 @@ export default function RecipeView({
     })
   }
 
-  const ALL_ALLERGENS = ['gluten','dairy','eggs','nuts','peanuts','shellfish','soy','sesame','fish']
   const ALL_DIETARY   = ['vegetarian','vegan','gluten-free','dairy-free','halal','kosher']
 
   async function toggleAllergen(a: string) {
@@ -482,22 +469,9 @@ export default function RecipeView({
           )}
         </div>
 
-        {/* ── Allergen + dietary bar ── */}
-        {(allAllergens.length > 0 || dietary.length > 0 || showAllergenEdit) && (
+        {/* ── Dietary bar ── */}
+        {(dietary.length > 0 || showAllergenEdit) && (
           <div className="mb-2 space-y-1">
-            {allAllergens.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-medium text-amber-700">⚠ Contains:</span>
-                {allAllergens.map(a => (
-                  <span key={a} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 capitalize">
-                    {a}
-                    {detectedAllergens.includes(a) && !manualAllergens.includes(a) && (
-                      <span className="ml-1 opacity-50">auto</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
             {dietary.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-medium text-[--green]">✓</span>
@@ -509,30 +483,14 @@ export default function RecipeView({
           </div>
         )}
 
-        {/* Allergen edit toggle */}
+        {/* Dietary edit toggle */}
         <button onClick={() => setShowAllergenEdit(v => !v)}
           className="text-[10px] text-[--hint] hover:text-[--muted] mb-2 underline block">
-          {showAllergenEdit ? 'Done editing allergens' : allAllergens.length === 0 && dietary.length === 0 ? '+ Add allergen / dietary flags' : 'Edit allergen flags'}
+          {showAllergenEdit ? 'Done editing dietary' : dietary.length === 0 ? '+ Add dietary flags' : 'Edit dietary flags'}
         </button>
 
         {showAllergenEdit && (
           <div className="mb-3 p-3 bg-[--surface-2] rounded-xl border border-[--border] space-y-2">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Allergens</div>
-              <div className="flex flex-wrap gap-1.5">
-                {ALL_ALLERGENS.map(a => {
-                  const isDetected = detectedAllergens.includes(a)
-                  const isManual   = manualAllergens.includes(a)
-                  const isActive   = isDetected || isManual
-                  return (
-                    <button key={a} onClick={() => toggleAllergen(a)}
-                      className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors capitalize ${isActive ? 'bg-amber-50 border-amber-300 text-amber-700' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>
-                      {a}{isDetected && !isManual ? ' (auto)' : ''}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] mb-1.5">Dietary</div>
               <div className="flex flex-wrap gap-1.5">
