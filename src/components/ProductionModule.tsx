@@ -2,14 +2,16 @@
 // src/components/ProductionModule.tsx
 // Daily production planning: covers → portions → shopping list → T-minus schedule → tasks → labels
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Recipe, LibraryIngredient } from '@/lib/types'
 import { TasksTab, LabelsTab } from './StaffOpsTasksLabels'
+import { formatNative, formatEnglish, formatMetric, formatPurchase } from '@/lib/unitConversion'
 
 // ── Types ─────────────────────────────────────────────────────
 type MenuType = 'morning' | 'aperitivo' | 'dinner' | 'drinks' | 'specials'
 type ProdTab  = 'plan' | 'schedule' | 'tasks' | 'labels'
+type PullSortKey = 'category' | 'name' | 'native'
 
 const SERVICE_LABELS: Record<MenuType, string> = {
   morning: 'Morning ☕', aperitivo: 'Aperitivo 🍸',
@@ -108,6 +110,9 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
   const [saved,        setSaved]        = useState(false)
   const [saveError,    setSaveError]    = useState<string | null>(null)
   const [recentDates,  setRecentDates]  = useState<string[]>([])
+  const [pullSortKey,     setPullSortKey]     = useState<PullSortKey>('category')
+  const [pullSortDir,     setPullSortDir]     = useState<'asc' | 'desc'>('asc')
+  const [groupByCategory, setGroupByCategory] = useState(true)
 
   // ── Load today's menu + existing production plan ──────────────
   const load = useCallback(async () => {
@@ -307,7 +312,7 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
   // ── Shopping list ─────────────────────────────────────────────
   const shoppingList = useMemo(() => {
-    const agg: Map<string, { name: string; amount: number; unit: string }> = new Map()
+    const agg: Map<string, { name: string; amount: number; unit: string; category: string; purchaseSize: number | null; purchaseLabel: string | null }> = new Map()
 
     function addIngredients(recipeObj: Recipe | undefined, ratio: number) {
       if (!recipeObj) return
@@ -319,7 +324,13 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
         const amount = (ing.amount || 0) * ratio
         const existing = agg.get(key)
         if (existing) { existing.amount += amount }
-        else { agg.set(key, { name, amount, unit: lib?.recipe_unit ?? ing.unit ?? '' }) }
+        else { agg.set(key, {
+          name, amount,
+          unit:          lib?.recipe_unit ?? ing.unit ?? '',
+          category:      lib?.category ?? '—',
+          purchaseSize:  lib?.purchase_unit_size ?? null,
+          purchaseLabel: lib?.purchase_unit ?? null,
+        }) }
       }
       // Expand component sub-recipes
       for (const comp of recipeObj.components ?? []) {
@@ -336,9 +347,10 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
       addIngredients(item.recipe, ratio)
     }
 
-    return Array.from(agg.values())
-      .filter((i: any) => i.amount > 0)
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+    return Array.from(agg.entries())
+      .map(([k, v]) => ({ ...v, key: k }))
+      .filter(i => i.amount > 0)
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [items, library, recipes])
 
   // ── T-minus schedule ──────────────────────────────────────────
@@ -383,28 +395,100 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
   const totalPortions = items.reduce((s, i) => s + (i.planned_portions || 0), 0)
 
-  // ── Print functions ───────────────────────────────────────────
+  // ── Pull list: sort, group, render helpers ────────────────────
+  function togglePullSort(key: PullSortKey) {
+    if (pullSortKey === key) setPullSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setPullSortKey(key); setPullSortDir('asc') }
+  }
+  const pullIcon = (key: PullSortKey) => pullSortKey === key ? (pullSortDir === 'asc' ? ' ▲' : ' ▼') : ''
+
+  const sortedPull = useMemo(() => {
+    const rows = [...shoppingList]
+    rows.sort((a, b) => {
+      let cmp = 0
+      switch (pullSortKey) {
+        case 'category': cmp = a.category.localeCompare(b.category) || a.name.localeCompare(b.name); break
+        case 'name':     cmp = a.name.localeCompare(b.name); break
+        case 'native':   cmp = a.amount - b.amount; break
+      }
+      return pullSortDir === 'asc' ? cmp : -cmp
+    })
+    return rows
+  }, [shoppingList, pullSortKey, pullSortDir])
+
+  const pullGroups = useMemo(() => {
+    const map = new Map<string, typeof sortedPull>()
+    for (const row of sortedPull) {
+      const cat = row.category || '—'
+      if (!map.has(cat)) map.set(cat, [])
+      map.get(cat)!.push(row)
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [sortedPull])
+
+  const renderPullRow = (ing: typeof sortedPull[number]) => (
+    <tr key={ing.key} className="border-b border-[--border] hover:bg-[--surface-2]/40">
+      <td className="px-3 py-2 text-[--muted]">{ing.category}</td>
+      <td className="px-3 py-2 font-medium text-[--text]">{ing.name}</td>
+      <td className="px-3 py-2 text-[--text]">{formatNative(ing.amount, ing.unit)}</td>
+      <td className="px-3 py-2 text-[--muted]">{formatEnglish(ing.amount, ing.unit)}</td>
+      <td className="px-3 py-2 text-[--muted]">{formatMetric(ing.amount, ing.unit)}</td>
+      <td className="px-3 py-2 text-[--muted]">{formatPurchase(ing.amount, ing.unit, ing.purchaseSize, ing.purchaseLabel) ?? '—'}</td>
+      <td className="px-3 py-2"></td>
+    </tr>
+  )
+
+  // ── Print / export functions ──────────────────────────────────
   function printPullList() {
-    const rows = shoppingList.map((i: any) =>
-      `<tr><td>${i.name}</td><td style="text-align:right;padding-left:24px">${Math.round(i.amount * 10)/10} ${i.unit}</td><td style="padding-left:24px">☐</td></tr>`
-    ).join('')
-    const portionSummary = items.filter(i => i.planned_portions > 0)
-      .map((i: any) => `${i.recipe?.name ?? i.recipe_id}: ${i.planned_portions} portions`)
-      .join('<br>')
+    const rows = sortedPull.map(i => `
+      <tr>
+        <td>${i.category}</td>
+        <td><strong>${i.name}</strong></td>
+        <td>${formatNative(i.amount, i.unit)}</td>
+        <td>${formatEnglish(i.amount, i.unit)}</td>
+        <td>${formatMetric(i.amount, i.unit)}</td>
+        <td>${formatPurchase(i.amount, i.unit, i.purchaseSize, i.purchaseLabel) ?? '—'}</td>
+        <td></td>
+      </tr>`).join('')
     openPrint(`
-      <h2 style="margin:0 0 4px">Pull List — ${date}</h2>
-      <p style="margin:0 0 16px;font-size:12px;color:#666">${totalPortions} total portions · ${shoppingList.length} ingredients</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="border-bottom:2px solid #000">
-          <th style="text-align:left;padding-bottom:4px">Ingredient</th>
-          <th style="text-align:right;padding-left:24px">Qty</th>
-          <th style="padding-left:24px">✓</th>
+      <style>
+        table { width:100%; border-collapse:collapse; font-size:12px; }
+        th { background:#f0ede8; text-align:left; padding:4px 8px; font-size:9px; text-transform:uppercase; letter-spacing:0.05em; border-bottom:1px solid #ccc; }
+        td { padding:4px 8px; border-bottom:1px solid #eee; vertical-align:top; }
+      </style>
+      <h2 style="margin:0 0 4px">Ingredient Pull List</h2>
+      <table>
+        <thead><tr>
+          <th>Category</th><th>Ingredient</th><th>Native</th><th>English</th><th>Metric</th><th>Purchase</th><th>Notes</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <hr style="margin:24px 0">
-      <p style="font-size:11px;color:#666"><strong>Portions:</strong><br>${portionSummary}</p>
+      <p style="margin-top:16px;font-size:11px;color:#666">Production pull list · ${date} · ${sortedPull.length} items</p>
     `)
+  }
+
+  function exportPullCSV() {
+    const headers = ['Category','Ingredient','Native','English','Metric','Purchase','Notes']
+    const rows = sortedPull.map(i => [
+      i.category,
+      i.name,
+      formatNative(i.amount, i.unit),
+      formatEnglish(i.amount, i.unit),
+      formatMetric(i.amount, i.unit),
+      formatPurchase(i.amount, i.unit, i.purchaseSize, i.purchaseLabel) ?? '—',
+      '',
+    ])
+    const BOM = '﻿'
+    const csvContent = BOM + [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `culmina_pulllist_${date}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   function printSchedule() {
@@ -607,36 +691,64 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
             </div>
           ))}
 
-          {/* Shopping list */}
+          {/* Pull list */}
           {shoppingList.length > 0 && (
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <h2 className="font-serif text-sm font-medium text-[--text]">
                   Ingredient Pull List
                   <span className="font-sans text-[11px] font-normal text-[--hint] ml-2">
                     {totalPortions} total portions · {shoppingList.length} ingredients
                   </span>
                 </h2>
-                <button onClick={() => {
-                  const lines = ['Ingredient,Amount,Unit', ...shoppingList.map((i: any) => `"${i.name}",${Math.round(i.amount * 10)/10},"${i.unit}"`)]
-                  const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
-                  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `pull-list-${date}.csv` })
-                  a.click()
-                }} className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">
-                  ↓ Export CSV
-                </button>
-              </div>
-              <div className="bg-white rounded-xl border border-[--border] overflow-hidden">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 divide-x divide-y divide-[--border]">
-                  {shoppingList.map(ing => (
-                    <div key={ing.name} className="px-3 py-2">
-                      <div className="text-xs font-medium text-[--text] truncate">{ing.name}</div>
-                      <div className="text-[11px] text-[--accent] font-medium mt-0.5">
-                        {Math.round(ing.amount * 10)/10} {ing.unit}
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-[11px] text-[--muted] cursor-pointer select-none">
+                    <input type="checkbox" checked={groupByCategory}
+                      onChange={e => setGroupByCategory(e.target.checked)} className="accent-[--accent]" />
+                    Group by category
+                  </label>
+                  <button onClick={exportPullCSV}
+                    className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">
+                    ↓ Export CSV
+                  </button>
+                  <button onClick={() => printPullList()}
+                    className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">
+                    🖨 Print
+                  </button>
                 </div>
+              </div>
+              <div className="bg-white rounded-xl border border-[--border] overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[--border] bg-[--surface-2]">
+                      <th className="text-left px-3 py-2">
+                        <button onClick={() => togglePullSort('category')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text]">Category{pullIcon('category')}</button>
+                      </th>
+                      <th className="text-left px-3 py-2">
+                        <button onClick={() => togglePullSort('name')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text]">Ingredient{pullIcon('name')}</button>
+                      </th>
+                      <th className="text-left px-3 py-2">
+                        <button onClick={() => togglePullSort('native')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text]">Native{pullIcon('native')}</button>
+                      </th>
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">English</th>
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">Metric</th>
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">Purchase</th>
+                      <th className="w-8 text-center px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">✓</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupByCategory
+                      ? pullGroups.map(([cat, rows]) => (
+                          <Fragment key={cat}>
+                            <tr className="bg-[--surface-2]/50">
+                              <td colSpan={7} className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[--accent]">{cat}</td>
+                            </tr>
+                            {rows.map(renderPullRow)}
+                          </Fragment>
+                        ))
+                      : sortedPull.map(renderPullRow)}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
