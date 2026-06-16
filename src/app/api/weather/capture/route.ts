@@ -61,11 +61,17 @@ function captureHour(): 6 | 12 | 18 {
 }
 
 export async function GET(req: Request) {
-  // Verify cron secret
-  const authHeader = req.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Only enforce the cron secret for Vercel cron-triggered requests.
+  const isVercelCron = req.headers.get('x-vercel-cron') === '1'
+  const cronSecret = process.env.CRON_SECRET
+
+  if (isVercelCron && cronSecret) {
+    const authHeader = req.headers.get('authorization')
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
+  // Manual browser/curl requests always pass through
 
   try {
     // Fetch current conditions from Open-Meteo (current_weather + hourly for humidity/cloud)
