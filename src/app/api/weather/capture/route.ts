@@ -137,12 +137,10 @@ export async function GET(req: Request) {
       raw_json:        data,
     }
 
+    // Weather observations are append-only — keep every capture as a new row.
     const { error } = await supabase
-      .from('weather_captures')
-      .upsert(capture, {
-        onConflict: 'restaurant_id,date_trunc,capture_hour',
-        ignoreDuplicates: false,
-      })
+      .from('weather_observations')
+      .insert(capture)
 
     if (error) {
       console.error('Supabase error:', JSON.stringify(error))
