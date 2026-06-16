@@ -144,7 +144,10 @@ export async function GET(req: Request) {
         ignoreDuplicates: false,
       })
 
-    if (error) throw error
+    if (error) {
+      console.error('Supabase error:', JSON.stringify(error))
+      throw error
+    }
 
     return NextResponse.json({
       ok: true,
@@ -160,7 +163,10 @@ export async function GET(req: Request) {
     })
 
   } catch (err) {
-    console.error('[weather/capture]', err)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const message = err instanceof Error
+      ? err.message
+      : JSON.stringify(err)
+    console.error('Weather capture error:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
