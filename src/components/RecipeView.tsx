@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { ALLERGENS } from '@/lib/ingredientConstants'
+import { computeRecipeAllergens, ALLERGEN_KEYS, ALLERGEN_LABELS } from '@/lib/allergenRollup'
 import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient, ServiceWare, ServiceWareRef, Garnish, ComponentRef } from '@/lib/types'
 import CostingTab from './CostingTab'
 import { printRecipeCard, recipeToText } from '@/lib/recipeExport'
@@ -122,6 +123,19 @@ export default function RecipeView({
   const allAllergens    = [...new Set([...manualAllergens, ...detectedAllergens])]
   const dietary         = recipe.dietary ?? []
 
+  // Structured allergen rollup (Gap 1 Phase 1b) — from confirmed library ingredients
+  const allergenRollup = useMemo(() => computeRecipeAllergens(recipe, library), [recipe, library])
+  const needsReconfirm = !recipe.allergens_confirmed && !!recipe.allergens_confirmed_at
+
+  async function confirmRecipeAllergens() {
+    await onUpdateRecipe(recipe.id, {
+      allergens_confirmed: true,
+      allergens_confirmed_at: new Date().toISOString(),
+      allergens_confirmed_by: userId,
+      ...allergenRollup.allergenFlags,
+    })
+  }
+
   const ALL_ALLERGENS = ['gluten','dairy','eggs','nuts','peanuts','shellfish','soy','sesame','fish']
   const ALL_DIETARY   = ['vegetarian','vegan','gluten-free','dairy-free','halal','kosher']
 
@@ -210,16 +224,27 @@ export default function RecipeView({
   async function toggleSpecial() {
     await onUpdateRecipe(recipe.id, { is_special: !(recipe.is_special ?? false) })
   }
+  // Changing the ingredient set (or an ingredient's library link) invalidates a
+  // prior allergen confirmation — reset it so the rollup must be re-confirmed.
   async function updateIngredient(ingId: string, field: keyof Ingredient, value: string | number | boolean) {
     const updated = recipe.ingredients.map(i => i.id === ingId ? { ...i, [field]: value } : i)
-    await onUpdateRecipe(recipe.id, { ingredients: updated })
+    await onUpdateRecipe(recipe.id, {
+      ingredients: updated,
+      ...(field === 'library_id' && recipe.allergens_confirmed ? { allergens_confirmed: false } : {}),
+    })
   }
   async function addIngredient() {
     const newIng: Ingredient = { id: crypto.randomUUID(), name: '', amount: 1, unit: 'each', category: 'other', prep_method: '', prep_notes: '' }
-    await onUpdateRecipe(recipe.id, { ingredients: [...recipe.ingredients, newIng] })
+    await onUpdateRecipe(recipe.id, {
+      ingredients: [...recipe.ingredients, newIng],
+      ...(recipe.allergens_confirmed ? { allergens_confirmed: false } : {}),
+    })
   }
   async function deleteIngredient(ingId: string) {
-    await onUpdateRecipe(recipe.id, { ingredients: recipe.ingredients.filter(i => i.id !== ingId) })
+    await onUpdateRecipe(recipe.id, {
+      ingredients: recipe.ingredients.filter(i => i.id !== ingId),
+      ...(recipe.allergens_confirmed ? { allergens_confirmed: false } : {}),
+    })
   }
 
   // ── Component / sub-recipe ───────────────────────────────────
@@ -409,6 +434,53 @@ export default function RecipeView({
             ))}
           </div>
         )}
+
+        {/* ── Structured allergen rollup (Gap 1 Phase 1b) ── */}
+        <div className="mb-3 p-3 bg-[--surface-2] rounded-xl border border-[--border]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[--hint]">Allergens</span>
+            {recipe.allergens_confirmed ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 font-medium">
+                ✓ Allergens confirmed{recipe.allergens_confirmed_at ? ` ${new Date(recipe.allergens_confirmed_at).toLocaleDateString()}` : ''}
+              </span>
+            ) : needsReconfirm ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">
+                ⚠ Needs re-confirmation
+              </span>
+            ) : null}
+          </div>
+
+          {/* A — active allergen badges */}
+          {ALLERGEN_KEYS.some(k => allergenRollup.allergenFlags[k]) ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {ALLERGEN_KEYS.filter(k => allergenRollup.allergenFlags[k]).map(k => (
+                <span key={k} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                  {ALLERGEN_LABELS[k]}
+                </span>
+              ))}
+            </div>
+          ) : allergenRollup.unconfirmedCount === 0 ? (
+            <p className="text-[11px] text-[--hint]">No allergens detected from confirmed ingredients</p>
+          ) : null}
+
+          {/* B — unconfirmed warning */}
+          {allergenRollup.unconfirmedCount > 0 && (
+            <div className="mt-2">
+              <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                ⚠ {allergenRollup.unconfirmedCount} ingredient{allergenRollup.unconfirmedCount === 1 ? '' : 's'} have unconfirmed allergens — allergen information may be incomplete.
+              </div>
+              <p className="text-[10px] text-[--hint] mt-1">{allergenRollup.unconfirmedNames.join(', ')}</p>
+            </div>
+          )}
+
+          {/* C — confirm button */}
+          {allergenRollup.unconfirmedCount === 0 && !recipe.allergens_confirmed && (
+            <button onClick={confirmRecipeAllergens}
+              className="mt-2 px-3 py-1.5 text-[11px] font-medium border border-[--accent] text-[--accent] rounded-lg hover:bg-[--accent-light] transition-colors">
+              Confirm allergen information
+            </button>
+          )}
+        </div>
 
         {/* ── Allergen + dietary bar ── */}
         {(allAllergens.length > 0 || dietary.length > 0 || showAllergenEdit) && (
