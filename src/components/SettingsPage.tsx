@@ -8,6 +8,7 @@ import NutritionEnricher from './NutritionEnricher'
 import GlobalIngredientMapper from './GlobalIngredientMapper'
 import HACCPEquipmentSettings from './HACCPEquipmentSettings'
 import DaypartSettings from './DaypartSettings'
+import OperatingHoursSettings from './OperatingHoursSettings'
 import StaffModule from './StaffModule'
 
 interface Props {
@@ -17,7 +18,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts' | 'operating_hours'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -238,6 +239,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     { key: 'branding',     label: 'Branding' },
     { key: 'staff_members', label: '👥 Staff' },
     { key: 'dayparts',     label: '⏱ Dayparts' },
+    { key: 'operating_hours', label: '🕐 Hours' },
     { key: 'haccp_equipment', label: '🌡 HACCP Equipment' },
     { key: 'queue',          label: 'Queue' },
     { key: 'library_import', label: '✨ AI Library Import' },
@@ -675,6 +677,14 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
         {/* ── Dayparts tab ── */}
         {tab === 'dayparts' && (
           <DaypartSettings
+            locationId={ctx.locations?.[0]?.id}
+            locationName={ctx.locations?.[0]?.name}
+          />
+        )}
+
+        {/* ── Operating Hours tab ── */}
+        {tab === 'operating_hours' && (
+          <OperatingHoursSettings
             locationId={ctx.locations?.[0]?.id}
             locationName={ctx.locations?.[0]?.name}
           />
