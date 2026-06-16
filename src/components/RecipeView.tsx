@@ -1,7 +1,6 @@
 'use client'
 import React, { useState, useMemo, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
-import { ALLERGENS } from '@/lib/ingredientConstants'
 import { computeRecipeAllergens, ALLERGEN_KEYS, ALLERGEN_LABELS } from '@/lib/allergenRollup'
 import type { Recipe, Step, CookPhase, LibraryIngredient, Vendor, RecipeStage, Ingredient, ServiceWare, ServiceWareRef, Garnish, ComponentRef } from '@/lib/types'
 import CostingTab from './CostingTab'
@@ -125,12 +124,6 @@ export default function RecipeView({
   }
 
   const ALL_DIETARY   = ['vegetarian','vegan','gluten-free','dairy-free','halal','kosher']
-
-  async function toggleAllergen(a: string) {
-    const current = recipe.allergens ?? []
-    const updated = current.includes(a) ? current.filter(x => x !== a) : [...current, a]
-    await onUpdateRecipe(recipe.id, { allergens: updated })
-  }
 
   async function toggleDietary(d: string) {
     const current = recipe.dietary ?? []
