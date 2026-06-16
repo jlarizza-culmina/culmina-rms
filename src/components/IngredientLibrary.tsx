@@ -39,7 +39,7 @@ function sortLibrary(
 
 function exportLibraryCSV(ingredients: LibraryIngredient[], vendors: Vendor[]) {
   const headers = [
-    'Name','Category','Recipe Unit','Vendor','Purchase Unit',
+    'Name','Category','Recipe Unit','Vendor','Purchase Qty','Purchase Unit',
     'Purchase Cost','Trim Factor','Is Active','Created','Updated'
   ]
 
@@ -50,7 +50,8 @@ function exportLibraryCSV(ingredients: LibraryIngredient[], vendors: Vendor[]) {
       ing.category ?? '',
       ing.recipe_unit ?? '',
       vendor?.name ?? '',
-      ing.purchase_unit ?? '',
+      ing.purchase_unit_qty ?? '',
+      ing.purchase_unit_label ?? '',
       ing.purchase_unit_cost ?? '',
       ing.trim_factor ?? '',
       ing.is_active ? 'true' : 'false',
@@ -348,14 +349,16 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
                   {sorted.map(ing => {
                     const cpu = costPerUnit(ing)
                     const vend = vendors.find(v => v.id === ing.vendor_id)
+                    const unitDisplay = ing.purchase_unit_qty && ing.purchase_unit_label
+                      ? `${ing.purchase_unit_qty} ${ing.purchase_unit_label}`
+                      : ing.purchase_unit ?? ''
                     return (
                       <tr key={ing.id} className="border-b border-[--border] hover:bg-[--surface-2] group">
                         <td className="py-2 pr-3 font-medium text-[--text]">{ing.name}</td>
                         <td className="py-2 pr-3 text-[--muted]">{CAT_ICONS[ing.category] ? `${CAT_ICONS[ing.category]} ${ing.category}` : ing.category}</td>
                         <td className="py-2 pr-3 text-[--muted]">{vend?.name ?? '—'}</td>
                         <td className="py-2 pr-3 text-[--muted]">
-                          {ing.purchase_unit_cost ? `$${ing.purchase_unit_cost.toFixed(2)}` : '—'}
-                          {ing.purchase_unit ? ` / ${ing.purchase_unit}` : ''}
+                          {ing.purchase_unit_cost ? `$${ing.purchase_unit_cost.toFixed(2)}${unitDisplay ? ` / ${unitDisplay}` : ''}` : '—'}
                         </td>
                         <td className="py-2 pr-3 text-[--muted]">
                           {ing.unit_conversion !== 1 ? `× ${ing.unit_conversion}` : '—'}

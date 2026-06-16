@@ -87,6 +87,8 @@ export default function UnlinkedIngredients({ userId, restaurantId, recipes, lib
         allergens: [],
         notes: '',
         purchase_unit: row.unit,
+        purchase_unit_label: row.unit,
+        purchase_unit_qty: null,
         recipe_unit: row.unit,
         unit_conversion: 1,
         trim_factor: 1,

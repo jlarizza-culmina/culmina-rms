@@ -120,6 +120,8 @@ export default function AIIngredientImporter({ userId, restaurantId, existingNam
         sub_category: r.sub_category || null,
         brand: r.brand || null,
         purchase_unit: r.purchase_unit,
+        purchase_unit_qty: null,
+        purchase_unit_label: r.purchase_unit || null,
         purchase_unit_cost: parseFloat(String(r.purchase_unit_cost)) || null,
         recipe_unit: r.recipe_unit,
         unit_conversion: parseFloat(String(r.unit_conversion)) || 1,
