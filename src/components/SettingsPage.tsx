@@ -9,6 +9,7 @@ import GlobalIngredientMapper from './GlobalIngredientMapper'
 import HACCPEquipmentSettings from './HACCPEquipmentSettings'
 import DaypartSettings from './DaypartSettings'
 import OperatingHoursSettings from './OperatingHoursSettings'
+import LocationCalendarSettings from './LocationCalendarSettings'
 import StaffModule from './StaffModule'
 
 interface Props {
@@ -18,7 +19,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts' | 'operating_hours'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts' | 'operating_hours' | 'calendar'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -240,6 +241,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     { key: 'staff_members', label: '👥 Staff' },
     { key: 'dayparts',     label: '⏱ Dayparts' },
     { key: 'operating_hours', label: '🕐 Hours' },
+    { key: 'calendar',     label: '📅 Calendar' },
     { key: 'haccp_equipment', label: '🌡 HACCP Equipment' },
     { key: 'queue',          label: 'Queue' },
     { key: 'library_import', label: '✨ AI Library Import' },
@@ -685,6 +687,14 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
         {/* ── Operating Hours tab ── */}
         {tab === 'operating_hours' && (
           <OperatingHoursSettings
+            locationId={ctx.locations?.[0]?.id}
+            locationName={ctx.locations?.[0]?.name}
+          />
+        )}
+
+        {/* ── Calendar tab ── */}
+        {tab === 'calendar' && (
+          <LocationCalendarSettings
             locationId={ctx.locations?.[0]?.id}
             locationName={ctx.locations?.[0]?.name}
           />
