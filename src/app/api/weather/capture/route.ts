@@ -104,8 +104,6 @@ export async function GET(req: Request) {
     const apparentF  = celsiusToF(hourly.apparent_temperature[hi])
     const precipIn   = mmToIn(hourly.precipitation[hi])
     const humidity   = hourly.relativehumidity_2m[hi]
-    const cloudCover = hourly.cloudcover[hi]
-    const gustMph    = kphToMph(hourly.windgusts_10m[hi])
 
     // Write to Supabase using service role (bypasses RLS)
     const supabase = createClient(
@@ -113,28 +111,23 @@ export async function GET(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Get the restaurant_id for Corretto (using the known restaurant_id)
+    // Get the restaurant_id for Corretto
     const restaurantId = process.env.RESTAURANT_ID ?? null
-    const locationId   = process.env.LOCATION_ID ?? null
+
+    const slotMap: Record<6 | 12 | 18, 'morning' | 'noon' | 'evening'> = { 6: 'morning', 12: 'noon', 18: 'evening' }
 
     const capture = {
-      restaurant_id:   restaurantId,
-      location_id:     locationId,
-      capture_hour:    captureHour(),
-      temperature_f:   tempF,
-      apparent_temp_f: apparentF,
-      precipitation_in: precipIn,
-      wind_speed_mph:  windMph,
-      wind_gust_mph:   gustMph,
-      humidity_pct:    humidity,
-      cloud_cover_pct: cloudCover,
-      weather_code:    weatherCode,
-      condition_label: wmoLabel(weatherCode),
-      is_precipitation: isPrecipitation(weatherCode),
-      latitude:        DARIEN.lat,
-      longitude:       DARIEN.lng,
-      timezone:        DARIEN.timezone,
-      raw_json:        data,
+      restaurant_id: restaurantId,
+      observed_at:   new Date().toISOString(),
+      temp_f:        tempF,
+      temp_c:        Math.round(((tempF - 32) * 5 / 9) * 10) / 10,
+      feels_like_f:  apparentF,
+      humidity:      humidity,
+      wind_mph:      windMph,
+      precipitation: precipIn,
+      weather_code:  weatherCode,
+      condition:     wmoLabel(weatherCode),
+      capture_slot:  slotMap[captureHour()],
     }
 
     // Weather observations are append-only — keep every capture as a new row.
@@ -150,10 +143,10 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       captured: {
-        hour:        capture.capture_hour,
+        slot:        capture.capture_slot,
         temp:        `${tempF}°F`,
         feels_like:  `${apparentF}°F`,
-        condition:   capture.condition_label,
+        condition:   capture.condition,
         precip:      `${precipIn}"`,
         wind:        `${windMph} mph`,
         humidity:    `${humidity}%`,
