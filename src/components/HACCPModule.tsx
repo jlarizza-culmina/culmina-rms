@@ -21,6 +21,70 @@ const SLOT_LABELS: Record<LogSlot, string> = { opening: 'Opening', closing: 'Clo
 function todayStr(): string { return new Date().toISOString().split('T')[0] }
 function dateOf(iso: string): string { return iso.split('T')[0] }
 
+function printTempLog(
+  logs: TemperatureLog[],
+  equipment: HACCPEquipment[],
+  locationName: string,
+  dateFrom: string,
+  dateTo: string
+) {
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric'
+  })
+
+  const rows = logs.map(log => {
+    const eq = equipment.find(e => e.id === log.equipment_id)
+    const compliant = log.is_compliant
+    const tempCell = compliant === false
+      ? `<span class="nc">${log.temp_value}°${log.temp_unit} ✗</span>`
+      : `<span class="ok">${log.temp_value}°${log.temp_unit} ✓</span>`
+    return `<tr>
+      <td>${fmtDate(log.recorded_at)}</td>
+      <td>${log.log_slot ?? '—'}</td>
+      <td>${eq?.name ?? '—'}</td>
+      <td>${tempCell}</td>
+      <td>${log.recorded_by ?? '—'}</td>
+      <td>${log.notes ?? ''}</td>
+    </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html><head>
+    <title>Temperature Log</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 20px; }
+      h2 { font-size: 13px; margin-bottom: 2px; }
+      p.meta { font-size: 9px; color: #555; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f0ede8; text-align: left; padding: 3px 6px;
+           font-size: 8px; text-transform: uppercase;
+           border-bottom: 2px solid #ccc; }
+      td { padding: 3px 6px; border-bottom: 1px solid #eee; }
+      tr:nth-child(even) { background: #fafafa; }
+      .nc { color: #c0392b; font-weight: bold; }
+      .ok { color: #27ae60; }
+      .footer { font-size: 8px; color: #999; margin-top: 16px; }
+      @media print { body { margin: 0; } }
+    </style></head><body>
+    <h2>Temperature Log</h2>
+    <p class="meta">${locationName} · ${dateFrom} – ${dateTo} ·
+    Generated ${new Date().toLocaleDateString()}</p>
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Slot</th><th>Equipment</th>
+        <th>Temp</th><th>Recorded By</th><th>Notes</th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">No logs for this period</td></tr>'}</tbody>
+    </table>
+    <p class="footer">
+      CT DPH requirement: temperature logs retained 90 days minimum.<br/>
+      Non-compliant readings shown in red. Each requires a corrective action.
+    </p>
+    </body></html>`
+
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
+}
+
 export default function HACCPModule({ locationId, locationName }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<HACCPTab>('log')
@@ -36,6 +100,8 @@ export default function HACCPModule({ locationId, locationName }: Props) {
     { slot: LogSlot; compliant: number; nonCompliant: number; ncNames: string[]; correctiveCount: number } | null
   >(null)
   const [recentLogs, setRecentLogs] = useState<TemperatureLog[]>([])
+  const [printFrom, setPrintFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0] })
+  const [printTo,   setPrintTo]   = useState(() => todayStr())
 
   // ── Corrective action state ───────────────────────────────────
   const [actions,    setActions]    = useState<CorrectiveAction[]>([])
@@ -169,6 +235,31 @@ export default function HACCPModule({ locationId, locationName }: Props) {
       }
     })
   }, [recentLogs])
+
+  // Missing logs for past days (today-1 .. today-7); today is not flagged.
+  const missingSlots = useMemo(() => {
+    const result: { date: string; slot: LogSlot }[] = []
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().split('T')[0]
+      const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      for (const slot of ['opening', 'closing'] as LogSlot[]) {
+        const has = recentLogs.some(l => dateOf(l.recorded_at) === dateStr && l.log_slot === slot)
+        if (!has) result.push({ date: label, slot })
+      }
+    }
+    return result
+  }, [recentLogs])
+
+  async function doPrintTempLog() {
+    if (!locationId) return
+    const { data } = await supabase.from('temperature_logs').select('*')
+      .eq('location_id', locationId)
+      .gte('recorded_at', `${printFrom}T00:00:00`)
+      .lte('recorded_at', `${printTo}T23:59:59`)
+      .order('recorded_at', { ascending: true })
+    printTempLog((data ?? []) as TemperatureLog[], equipment, locationName ?? 'Location', printFrom, printTo)
+  }
 
   // ── Corrective actions: filter + print ────────────────────────
   const filteredActions = useMemo(() =>
@@ -345,6 +436,35 @@ export default function HACCPModule({ locationId, locationName }: Props) {
                   </div>
                 </div>
               )}
+
+              {/* Missing log alert */}
+              {missingSlots.length > 0 && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <div className="text-xs font-medium text-amber-800">⚠ Missing temperature logs:</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {missingSlots.map((s, i) => (
+                      <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-amber-200 text-amber-700 capitalize">
+                        {s.date} — {s.slot}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-amber-700 mt-2">Missing logs must be explained to a health inspector.</div>
+                </div>
+              )}
+
+              {/* Print temperature log */}
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="text-[11px] text-[--muted]">Print log for:</span>
+                <input type="date" value={printFrom} onChange={e => setPrintFrom(e.target.value)}
+                  className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                <span className="text-[11px] text-[--hint]">to</span>
+                <input type="date" value={printTo} onChange={e => setPrintTo(e.target.value)}
+                  className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                <button onClick={doPrintTempLog}
+                  className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">
+                  🖨 Print Temperature Log
+                </button>
+              </div>
 
               {/* Compliance history */}
               <div>
