@@ -2,8 +2,34 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { LibraryIngredient, Vendor } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
-import { ING_CATEGORIES, SUBCATEGORIES, ALLERGENS, CAT_ICONS } from '@/lib/ingredientConstants'
+import { ING_CATEGORIES, SUBCATEGORIES, CAT_ICONS } from '@/lib/ingredientConstants'
 import { PURCHASE_UNIT_OPTIONS } from '@/lib/unitConversion'
+
+// FDA 9 major allergens (structured boolean flags — Gap 1)
+type AllergenKey =
+  | 'allergen_milk' | 'allergen_eggs' | 'allergen_fish' | 'allergen_shellfish'
+  | 'allergen_tree_nuts' | 'allergen_peanuts' | 'allergen_wheat'
+  | 'allergen_soybeans' | 'allergen_sesame'
+type DietaryKey = 'is_gluten_free' | 'is_vegan' | 'is_vegetarian' | 'is_halal' | 'is_kosher'
+
+const ALLERGENS: { key: AllergenKey; label: string }[] = [
+  { key: 'allergen_milk',      label: 'Dairy / Milk' },
+  { key: 'allergen_eggs',      label: 'Eggs' },
+  { key: 'allergen_fish',      label: 'Fish' },
+  { key: 'allergen_shellfish', label: 'Shellfish' },
+  { key: 'allergen_tree_nuts', label: 'Tree Nuts' },
+  { key: 'allergen_peanuts',   label: 'Peanuts' },
+  { key: 'allergen_wheat',     label: 'Wheat / Gluten' },
+  { key: 'allergen_soybeans',  label: 'Soy' },
+  { key: 'allergen_sesame',    label: 'Sesame' },
+]
+const DIETARY_FLAGS: { key: DietaryKey; label: string }[] = [
+  { key: 'is_gluten_free', label: 'Gluten-free' },
+  { key: 'is_vegan',       label: 'Vegan' },
+  { key: 'is_vegetarian',  label: 'Vegetarian' },
+  { key: 'is_halal',       label: 'Halal' },
+  { key: 'is_kosher',      label: 'Kosher' },
+]
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
@@ -193,35 +219,67 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
     sortKey === col ? <span className="ml-1 text-[--accent]">{sortDir === 'asc' ? '▲' : '▼'}</span> : null
 
   // ── Ingredient CRUD ───────────────────────────────────────────
-  async function saveIngredient() {
-    if (!editIng?.name?.trim()) return
+  async function saveIngredient(override?: Partial<LibraryIngredient>) {
+    const src = override ?? editIng
+    if (!src?.name?.trim()) return
     setSavingIng(true)
     const payload = {
       user_id: userId,
-      name: editIng.name!.trim(),
-      category: editIng.category || 'other',
-      sub_category: (editIng as any).sub_category || null,
-      vendor_id: editIng.vendor_id || null,
-      purchase_unit_qty: editIng.purchase_unit_qty ?? null,
-      purchase_unit_label: editIng.purchase_unit_label || null,
-      purchase_unit_cost: editIng.purchase_unit_cost ?? null,
-      purchase_unit_size: editIng.purchase_unit_size ?? null,
-      recipe_unit: editIng.recipe_unit || '',
-      recipe_unit_is_metric: editIng.recipe_unit_is_metric || false,
-      unit_conversion: editIng.unit_conversion ?? 1,
-      trim_factor: editIng.trim_factor ?? 1,
-      allergens: editIng.allergens || [],
-      notes: editIng.notes || '',
-      is_active: editIng.is_active ?? true,
+      name: src.name!.trim(),
+      category: src.category || 'other',
+      sub_category: (src as any).sub_category || null,
+      vendor_id: src.vendor_id || null,
+      purchase_unit_qty: src.purchase_unit_qty ?? null,
+      purchase_unit_label: src.purchase_unit_label || null,
+      purchase_unit_cost: src.purchase_unit_cost ?? null,
+      purchase_unit_size: src.purchase_unit_size ?? null,
+      recipe_unit: src.recipe_unit || '',
+      recipe_unit_is_metric: src.recipe_unit_is_metric || false,
+      unit_conversion: src.unit_conversion ?? 1,
+      trim_factor: src.trim_factor ?? 1,
+      allergens: src.allergens || [],
+      notes: src.notes || '',
+      is_active: src.is_active ?? true,
+      // Structured allergens & dietary (Gap 1)
+      allergen_milk:      src.allergen_milk ?? false,
+      allergen_eggs:      src.allergen_eggs ?? false,
+      allergen_fish:      src.allergen_fish ?? false,
+      allergen_shellfish: src.allergen_shellfish ?? false,
+      allergen_tree_nuts: src.allergen_tree_nuts ?? false,
+      allergen_peanuts:   src.allergen_peanuts ?? false,
+      allergen_wheat:     src.allergen_wheat ?? false,
+      allergen_soybeans:  src.allergen_soybeans ?? false,
+      allergen_sesame:    src.allergen_sesame ?? false,
+      allergens_confirmed:    src.allergens_confirmed ?? false,
+      allergens_confirmed_by: src.allergens_confirmed_by ?? null,
+      allergens_confirmed_at: src.allergens_confirmed_at ?? null,
+      is_gluten_free: src.is_gluten_free ?? false,
+      is_vegan:       src.is_vegan ?? false,
+      is_vegetarian:  src.is_vegetarian ?? false,
+      is_halal:       src.is_halal ?? false,
+      is_kosher:      src.is_kosher ?? false,
+      allergen_notes: src.allergen_notes || null,
     }
-    if (editIng.id) {
-      await supabase.from('ingredient_library').update(payload).eq('id', editIng.id)
+    if (src.id) {
+      await supabase.from('ingredient_library').update(payload).eq('id', src.id)
     } else {
       await supabase.from('ingredient_library').insert(payload)
     }
     setSavingIng(false)
     setEditIng(null)
     onLibraryChange()
+  }
+
+  function confirmAllergens() {
+    if (!editIng) return
+    const confirmed: Partial<LibraryIngredient> = {
+      ...editIng,
+      allergens_confirmed: true,
+      allergens_confirmed_at: new Date().toISOString(),
+      allergens_confirmed_by: userId,
+    }
+    setEditIng(confirmed)
+    saveIngredient(confirmed)
   }
 
   async function deleteIngredient(id: string) {
@@ -558,18 +616,48 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
 
             <div className="col-span-2 border-t border-[--border] pt-3 mt-1">
               <Label>Allergens</Label>
-              <div className="flex flex-wrap gap-2 mt-1">
+              {/* Part A — FDA 9 major allergens */}
+              <div className="grid grid-cols-3 gap-2 mt-1">
                 {ALLERGENS.map(a => (
-                  <label key={a} className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input type="checkbox" checked={(editIng.allergens || []).includes(a)}
-                      onChange={e => setEditIng(p => ({
-                        ...p!, allergens: e.target.checked
-                          ? [...(p!.allergens || []), a]
-                          : (p!.allergens || []).filter(x => x !== a)
-                      }))} className="accent-[--accent]" />
-                    <span className="capitalize">{a}</span>
+                  <label key={a.key} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                    <input type="checkbox" checked={!!editIng[a.key]}
+                      onChange={e => setEditIng(p => ({ ...p!, [a.key]: e.target.checked, allergens_confirmed: false }))}
+                      className="accent-[--accent]" />
+                    <span>{a.label}</span>
                   </label>
                 ))}
+              </div>
+
+              {/* Part B — Dietary flags */}
+              <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-[--border]">
+                {DIETARY_FLAGS.map(d => (
+                  <label key={d.key} className="flex items-center gap-1 text-[11px] cursor-pointer">
+                    <input type="checkbox" checked={!!editIng[d.key]}
+                      onChange={e => setEditIng(p => ({ ...p!, [d.key]: e.target.checked }))}
+                      className="accent-[--accent]" />
+                    <span>{d.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              {/* Part C — Notes + confirm */}
+              <input value={editIng.allergen_notes || ''}
+                onChange={e => setEditIng(p => ({ ...p!, allergen_notes: e.target.value }))}
+                placeholder="e.g. may contain traces of nuts" className="fi w-full mt-3" />
+              <div className="mt-2 flex items-center gap-3">
+                <button type="button" onClick={confirmAllergens} disabled={savingIng}
+                  className="px-3 py-1.5 text-xs font-medium border border-[--accent] text-[--accent] rounded-lg hover:bg-[--accent-light] disabled:opacity-50">
+                  Mark allergens as confirmed
+                </button>
+                {editIng.allergens_confirmed ? (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 font-medium">
+                    ✓ Confirmed{editIng.allergens_confirmed_at ? ` ${new Date(editIng.allergens_confirmed_at).toLocaleDateString()}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">
+                    ⚠ Unconfirmed
+                  </span>
+                )}
               </div>
             </div>
             <div className="col-span-2">

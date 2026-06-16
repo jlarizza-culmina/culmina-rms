@@ -156,6 +156,20 @@ export interface Recipe {
   // Allergens & dietary
   allergens?: string[]
   dietary?: string[]
+  // Structured allergen flags (Gap 1)
+  allergen_milk?:        boolean
+  allergen_eggs?:        boolean
+  allergen_fish?:        boolean
+  allergen_shellfish?:   boolean
+  allergen_tree_nuts?:   boolean
+  allergen_peanuts?:     boolean
+  allergen_wheat?:       boolean
+  allergen_soybeans?:    boolean
+  allergen_sesame?:      boolean
+  allergens_confirmed?:  boolean
+  allergens_confirmed_by?: string
+  allergens_confirmed_at?: string
+  allergen_notes?:       string
   // Versioning
   version?: number
   parent_version_id?: string | null
@@ -273,6 +287,25 @@ export interface LibraryIngredient {
   unit_conversion: number
   trim_factor: number
   allergens: string[]
+  // Structured allergen flags & dietary (Gap 1)
+  allergen_milk?:        boolean
+  allergen_eggs?:        boolean
+  allergen_fish?:        boolean
+  allergen_shellfish?:   boolean
+  allergen_tree_nuts?:   boolean
+  allergen_peanuts?:     boolean
+  allergen_wheat?:       boolean
+  allergen_soybeans?:    boolean
+  allergen_sesame?:      boolean
+  allergens_confirmed?:  boolean
+  allergens_confirmed_by?: string
+  allergens_confirmed_at?: string
+  is_gluten_free?:       boolean
+  is_vegan?:             boolean
+  is_vegetarian?:        boolean
+  is_halal?:             boolean
+  is_kosher?:            boolean
+  allergen_notes?:       string
   notes: string
   is_active: boolean
   created_at?: string
