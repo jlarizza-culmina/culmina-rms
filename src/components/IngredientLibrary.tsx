@@ -36,6 +36,91 @@ function sortLibrary(
   })
 }
 
+function exportLibraryCSV(ingredients: LibraryIngredient[], vendors: Vendor[]) {
+  const headers = [
+    'Name','Category','Recipe Unit','Vendor','Purchase Unit',
+    'Purchase Cost','Trim Factor','Is Active','Created','Updated'
+  ]
+
+  const rows = ingredients.map(ing => {
+    const vendor = vendors.find(v => v.id === ing.vendor_id)
+    return [
+      ing.name ?? '',
+      ing.category ?? '',
+      ing.recipe_unit ?? '',
+      vendor?.name ?? '',
+      ing.purchase_unit ?? '',
+      ing.purchase_unit_cost ?? '',
+      ing.trim_factor ?? '',
+      ing.is_active ? 'true' : 'false',
+      ing.created_at ? new Date(ing.created_at).toLocaleDateString() : '',
+      ing.updated_at ? new Date(ing.updated_at).toLocaleDateString() : '',
+    ]
+  })
+
+  // UTF-8 BOM for Excel compatibility
+  const BOM = '﻿'
+  const csvContent = BOM + [headers, ...rows]
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+
+  const date = new Date().toISOString().split('T')[0]
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `culmina_ingredients_${date}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function printLibrary(ingredients: LibraryIngredient[], vendors: Vendor[]) {
+  const date = new Date().toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  })
+
+  const rows = ingredients.map(ing => {
+    const vendor = vendors.find(v => v.id === ing.vendor_id)
+    return `
+      <tr>
+        <td>${ing.category ?? '—'}</td>
+        <td><strong>${ing.name ?? ''}</strong></td>
+        <td>${ing.recipe_unit ?? '—'}</td>
+        <td>${vendor?.name ?? '—'}</td>
+        <td>${ing.purchase_unit_cost ? `$${ing.purchase_unit_cost}` : '—'}</td>
+        <td></td>
+      </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html><head>
+    <title>Ingredient Library</title>
+    <style>
+      body { font-family: Georgia, serif; font-size: 11px; margin: 20px; }
+      h2 { font-size: 14px; margin-bottom: 4px; }
+      p.meta { font-size: 10px; color: #666; margin-bottom: 12px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f0ede8; text-align: left; padding: 4px 8px;
+           font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+           border-bottom: 1px solid #ccc; }
+      td { padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+      @media print { body { margin: 0; } }
+    </style>
+    </head><body>
+    <h2>Ingredient Library</h2>
+    <p class="meta">Printed ${date} · ${ingredients.length} items</p>
+    <table>
+      <thead><tr>
+        <th>Category</th><th>Name</th><th>Unit</th>
+        <th>Vendor</th><th>Cost</th><th>Notes</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </body></html>`
+
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
+}
+
 interface Props {
   userId: string
   vendors: Vendor[]
@@ -208,6 +293,14 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
               <option value="all">All vendors</option>
               {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
+            <button onClick={() => exportLibraryCSV(sorted, vendors)}
+              className="px-3 py-1.5 border border-[--border-2] text-[--muted] text-xs font-medium rounded-lg hover:bg-[--surface-2] transition-colors whitespace-nowrap">
+              ↓ Export CSV
+            </button>
+            <button onClick={() => printLibrary(sorted, vendors)}
+              className="px-3 py-1.5 border border-[--border-2] text-[--muted] text-xs font-medium rounded-lg hover:bg-[--surface-2] transition-colors whitespace-nowrap">
+              🖨 Print
+            </button>
             <button onClick={() => setEditIng(blankIngredient())}
               className="px-3 py-1.5 bg-[--accent] text-white text-xs font-medium rounded-lg hover:bg-[--accent-dark] transition-colors whitespace-nowrap">
               + Add Ingredient
