@@ -76,7 +76,7 @@ export default function StaffOpsModule({ userId, restaurantId, locationId = '' }
     const [{ data: r }, { data: s }, { data: rec }] = await Promise.all([
       supabase.from('app_roles').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
       supabase.from('staff_members').select('*').eq('restaurant_id', restaurantId).order('name'),
-      supabase.from('recipes').select('id, name').eq('restaurant_id', restaurantId).order('name'),
+      supabase.from('recipes').select('id, name').eq('restaurant_id', restaurantId).eq('is_deleted', false).order('name'),
     ])
     const roleList = r ?? []
     setRoles(roleList)

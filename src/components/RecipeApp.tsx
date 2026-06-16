@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase'
+import { audit } from '@/lib/audit'
 import type { Recipe, Vendor, LibraryIngredient, MenuItemStatus } from '@/lib/types'
 import type { AppContext } from './AppShell'
 import AddModal from './AddModal'
@@ -98,7 +99,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      let query = supabase.from('recipes').select('*').order('created_at', { ascending: false })
+      let query = supabase.from('recipes').select('*').eq('is_deleted', false).order('created_at', { ascending: false })
       if (restaurantId) query = query.eq('restaurant_id', restaurantId)
       else query = query.eq('user_id', user.id)
 
@@ -209,11 +210,49 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Remove this recipe?')) return
-    await supabase.from('recipes').delete().eq('id', id)
+    const recipeName = recipes.find(r => r.id === id)?.name
+    // Soft delete — preserve the row in history instead of destroying it.
+    const { error, count } = await supabase
+      .from('recipes')
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        deleted_by: user.id,
+      }, { count: 'exact' })
+      .eq('id', id)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+    if (count === 0) {
+      // RLS silently blocks the update (e.g. recipe belongs to another user)
+      // and returns no error — surface it rather than faking success in the UI.
+      alert('Could not delete recipe. You may not have permission to delete this item.')
+      return
+    }
+
+    // Fire-and-forget audit. Actor role/location resolution lands with the
+    // auth/login flow (Gap 7); pass what's in scope for now. audit() never throws.
+    audit({
+      restaurantId: restaurantId ?? '',
+      actor: {
+        id:       user?.id ?? '',
+        name:     user?.email ?? 'unknown',
+        email:    user?.email,
+        role:     'unknown',
+        location: 'unknown',
+      },
+      action:       'recipe.delete',
+      resourceType: 'recipe',
+      resourceId:   id,
+      resourceName: recipeName ?? id,
+    }).catch(() => {})
+
     setRecipes(prev => prev.filter(r => r.id !== id))
     setPrepSelected(prev => { const n = new Set(prev); n.delete(id); return n })
     if (activeId === id) { setNavStack([]); onSubPageChange?.('') }
-  }, [activeId, supabase])
+  }, [activeId, supabase, recipes, restaurantId, user])
 
   const handleServings = useCallback((id: string, delta: number) => {
     setServings(prev => ({ ...prev, [id]: Math.max(1, (prev[id] ?? 1) + delta) }))

@@ -43,6 +43,7 @@ export default function GlobalIngredientMapper({ userId, restaurantId }: Props) 
       supabase.from('recipes')
         .select('id, name, ingredients')
         .eq('restaurant_id', restaurantId)
+        .eq('is_deleted', false)
         .not('ingredients', 'is', null),
       supabase.from('ingredient_library')
         .select('*')

@@ -53,7 +53,7 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      let q = supabase.from('recipes').select('*').order('name')
+      let q = supabase.from('recipes').select('*').eq('is_deleted', false).order('name')
       if (restaurantId) q = q.eq('restaurant_id', restaurantId)
       else q = q.eq('user_id', userId)
 

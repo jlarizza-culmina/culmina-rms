@@ -27,17 +27,10 @@ export async function POST(req: Request) {
 
     if (fetchError) throw fetchError
 
-    // Fetch the library item name for the canonical name overwrite
-    const { data: libItem } = await supabase
-      .from('ingredient_library')
-      .select('name')
-      .eq('id', library_id)
-      .single()
-    const canonicalName = libItem?.name ?? null
-
     const nameLower = ingredient_name.toLowerCase().trim()
     let updatedCount = 0
 
+    // Update each recipe that has this ingredient name
     for (const recipe of recipes ?? []) {
       const ingredients: any[] = recipe.ingredients ?? []
       let changed = false
@@ -46,7 +39,7 @@ export async function POST(req: Request) {
         if (!ing) return ing
         if ((ing.name ?? '').toLowerCase().trim() === nameLower) {
           changed = true
-          return { ...ing, library_id, ...(canonicalName ? { name: canonicalName } : {}) }
+          return { ...ing, library_id }
         }
         return ing
       })

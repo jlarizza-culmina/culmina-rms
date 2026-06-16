@@ -116,7 +116,7 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
     // Load recipes + library + roles + staff
     const [{ data: recipeData }, { data: libData }, { data: rolesData }, { data: staffData }] = await Promise.all([
-      supabase.from('recipes').select('*').eq('restaurant_id', restaurantId).eq('is_active', true),
+      supabase.from('recipes').select('*').eq('restaurant_id', restaurantId).eq('is_active', true).eq('is_deleted', false),
       supabase.from('ingredient_library').select('*')
         .or(`restaurant_id.eq.${restaurantId},user_id.eq.${userId},user_id.is.null`)
         .eq('is_active', true),
