@@ -39,3 +39,8 @@ next-env.d.ts
 "*.zip" 
 .vercel
 .env*
+
+
+# quarantined junk files
+/_junk
+CLAUDE.local.md
