@@ -10,6 +10,7 @@
 //   Time columns are PostgreSQL `time` (24-hour); displayed as 12-hour strings.
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
+import { to12Hour, to24Hour } from '@/lib/timeFormat'
 
 interface Props {
   locationId?: string
@@ -62,29 +63,6 @@ const TIME_OPTIONS: string[] = (() => {
   }
   return out
 })()
-
-// "6:00 AM" → "06:00", "10:30 PM" → "22:30", "" → ""
-function to24Hour(time12: string): string {
-  if (!time12) return ''
-  const m = time12.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
-  if (!m) return ''
-  let h = parseInt(m[1], 10)
-  const ap = m[3].toUpperCase()
-  if (ap === 'AM') { if (h === 12) h = 0 }
-  else if (h !== 12) h += 12
-  return `${String(h).padStart(2, '0')}:${m[2]}`
-}
-
-// "06:00:00" → "6:00 AM", "22:30:00" → "10:30 PM", "" → ""
-function to12Hour(time24: string): string {
-  if (!time24) return ''
-  const m = time24.trim().match(/^(\d{1,2}):(\d{2})/)
-  if (!m) return ''
-  const h = parseInt(m[1], 10)
-  const ap = h < 12 ? 'AM' : 'PM'
-  const h12 = h % 12 || 12
-  return `${h12}:${m[2]} ${ap}`
-}
 
 function todayStr(): string { return new Date().toISOString().split('T')[0] }
 function addDaysStr(dateStr: string, delta: number): string {
