@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Recipe, LibraryIngredient, Vendor } from '@/lib/types'
 import CostReport from './CostReport'
+import WeatherWidget from './WeatherWidget'
+import WeatherAnalyticsPanel from './WeatherAnalyticsPanel'
 
 interface Props {
   userId: string
@@ -304,9 +306,8 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
                 Captured at 6am, noon, and 6pm via Open-Meteo. Used to anticipate commuter behaviour and menu demand.
               </p>
             </div>
-            <div className="bg-[--surface-2] rounded-xl p-6 text-center text-[--muted] text-sm">
-              Weather integration coming soon — will show 6am/noon/6pm conditions captured at Darien, CT.
-            </div>
+            <WeatherWidget restaurantId={restaurantId} />
+            <WeatherAnalyticsPanel restaurantId={restaurantId} days={30} />
           </div>
         )}
       </div>
