@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase'
 import { audit } from '@/lib/audit'
-import type { Recipe, Vendor, LibraryIngredient, MenuItemStatus } from '@/lib/types'
+import type { Recipe, Vendor, LibraryIngredient, MenuItemStatus, StaffMemberWithRoles } from '@/lib/types'
 import type { AppContext } from './AppShell'
 import AddModal from './AddModal'
 import RecipeView from './RecipeView'
@@ -16,12 +16,14 @@ interface Props {
   user: User
   restaurantId?: string
   ctx?: AppContext
+  staffMember?: StaffMemberWithRoles | null
+  locationName?: string
   onSubPageChange?: (title: string) => void
   onNavigateHome?: () => void
   onBreadcrumbSegmentClick?: (handler: (idx: number) => void) => void
 }
 
-export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, onNavigateHome, onBreadcrumbSegmentClick }: Props) {
+export default function RecipeApp({ user, restaurantId, ctx, staffMember, locationName, onSubPageChange, onNavigateHome, onBreadcrumbSegmentClick }: Props) {
   const supabase = createClient()
 
   // ── Data state ───────────────────────────────────────────────
@@ -237,11 +239,11 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
     audit({
       restaurantId: restaurantId ?? '',
       actor: {
-        id:       user?.id ?? '',
-        name:     user?.email ?? 'unknown',
+        id:       staffMember?.id ?? user?.id ?? '',
+        name:     staffMember?.name ?? user?.email ?? 'unknown',
         email:    user?.email,
-        role:     'unknown',
-        location: 'unknown',
+        role:     staffMember?.staff_location_roles?.[0]?.roles?.name ?? 'unknown',
+        location: locationName ?? 'unknown',
       },
       action:       'recipe.delete',
       resourceType: 'recipe',
@@ -252,7 +254,7 @@ export default function RecipeApp({ user, restaurantId, ctx, onSubPageChange, on
     setRecipes(prev => prev.filter(r => r.id !== id))
     setPrepSelected(prev => { const n = new Set(prev); n.delete(id); return n })
     if (activeId === id) { setNavStack([]); onSubPageChange?.('') }
-  }, [activeId, supabase, recipes, restaurantId, user])
+  }, [activeId, supabase, recipes, restaurantId, user, staffMember, locationName])
 
   const handleServings = useCallback((id: string, delta: number) => {
     setServings(prev => ({ ...prev, [id]: Math.max(1, (prev[id] ?? 1) + delta) }))

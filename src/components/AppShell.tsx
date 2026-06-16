@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase'
-import type { AppUser, Restaurant, Location, RestaurantMember, AppModule, UserRole } from '@/lib/types'
+import type { AppUser, Restaurant, Location, RestaurantMember, AppModule, UserRole, StaffMemberWithRoles } from '@/lib/types'
 import OnboardingWizard from './OnboardingWizard'
 import ModuleLauncher from './ModuleLauncher'
 import RecipeApp from './RecipeApp'
@@ -35,6 +35,8 @@ export default function AppShell({ user }: Props) {
   const [restaurant,  setRestaurant]  = useState<Restaurant | null>(null)
   const [locations,   setLocations]   = useState<Location[]>([])
   const [member,      setMember]      = useState<RestaurantMember | null>(null)
+  const [staffMember, setStaffMember] = useState<StaffMemberWithRoles | null>(null)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [module,      setModule]      = useState<AppModule>('home')
   const [moduleTitle,  setModuleTitle]  = useState('')
@@ -86,6 +88,15 @@ export default function AppShell({ user }: Props) {
         .order('is_primary', { ascending: false })
 
       setLocations(locData ?? [])
+
+      // Load the staff_member record linked to this auth user (if any).
+      const { data: staffData } = await supabase
+        .from('staff_members')
+        .select('*, staff_location_roles(*, roles(*))')
+        .eq('app_user_id', user.id)
+        .eq('restaurant_id', memberData.restaurant_id)
+        .maybeSingle()
+      setStaffMember((staffData as StaffMemberWithRoles | null) ?? null)
     }
 
     setLoading(false)
@@ -161,6 +172,18 @@ export default function AppShell({ user }: Props) {
   const canSeeCosting = ['super_admin','admin','chef','manager'].includes(ctx.role)
   const isAdmin       = ['super_admin','admin'].includes(ctx.role)
 
+  // ── Current staff identity for the header + audit ──────────
+  const today = new Date().toISOString().split('T')[0]
+  const headerName = staffMember?.preferred_name || staffMember?.name || user.email || 'Admin'
+  const activeRoles = (staffMember?.staff_location_roles ?? []).filter(
+    slr => !slr.effective_until || slr.effective_until >= today
+  )
+  const currentLocId = ctx.location?.id
+  const roleLabel = staffMember
+    ? (activeRoles.find(r => !currentLocId || r.location_id === currentLocId)?.roles?.name
+        ?? activeRoles[0]?.roles?.name ?? 'Staff')
+    : 'Admin'
+
   // ── Top bar ────────────────────────────────────────────────
   const BrandStyle = () => restaurant.branding?.primaryColor ? (
     <style>{`
@@ -232,12 +255,23 @@ export default function AppShell({ user }: Props) {
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         )}
-        <span className="text-xs text-[--muted] hidden sm:inline">
-          {ctx.currentUser.display_name || user.email}
-        </span>
-        <button onClick={signOut} className="text-[11px] text-[--hint] hover:text-[--muted] underline">
-          Sign out
-        </button>
+        <div className="relative">
+          <button onClick={() => setUserMenuOpen(o => !o)}
+            className="flex items-center gap-1.5 text-xs text-[--muted] hover:text-[--text] transition-colors">
+            <span className="hidden sm:inline">{headerName}</span>
+            <span className="text-[--hint] hidden sm:inline">·</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[--surface-2] border border-[--border] capitalize">{roleLabel}</span>
+            <span className="text-[8px] text-[--hint]">▼</span>
+          </button>
+          {userMenuOpen && (
+            <div className="absolute right-0 mt-1 w-36 bg-white border border-[--border] rounded-lg shadow-lg py-1 z-20">
+              <button onClick={() => { setUserMenuOpen(false); signOut() }}
+                className="w-full text-left px-3 py-1.5 text-xs text-[--muted] hover:bg-[--surface-2]">
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   )
@@ -302,6 +336,8 @@ export default function AppShell({ user }: Props) {
             user={user}
             restaurantId={restaurant.id}
             ctx={ctx}
+            staffMember={staffMember}
+            locationName={ctx.location?.name}
             onSubPageChange={title => setSubPageTitle(title)}
             onBreadcrumbSegmentClick={handler => setBreadcrumbHandler(() => handler)}
           />

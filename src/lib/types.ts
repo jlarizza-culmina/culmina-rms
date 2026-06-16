@@ -416,6 +416,14 @@ export interface StaffLocationRole {
   created_at:          string
 }
 
+// Joined shapes returned by `select('*, staff_location_roles(*, roles(*))')`.
+export interface StaffLocationRoleWithRole extends StaffLocationRole {
+  roles?: { name: string } | null
+}
+export interface StaffMemberWithRoles extends StaffMember {
+  staff_location_roles?: StaffLocationRoleWithRole[]
+}
+
 export interface HACCPEquipment {
   id:              string
   location_id:     string
