@@ -8,7 +8,7 @@ import ModuleLauncher from './ModuleLauncher'
 import RecipeApp from './RecipeApp'
 import LibraryModule from './LibraryModule'
 import ProductionModule from './ProductionModule'
-import StaffOpsModule from './StaffOpsModule'
+import StaffModule from './StaffModule'
 import AnalyticsModule from './AnalyticsModule'
 import HACCPModule from './HACCPModule'
 import WaitlistModule from './WaitlistModule'
@@ -328,14 +328,14 @@ export default function AppShell({ user }: Props) {
     )
   }
 
-  // ── Library ────────────────────────────────────────────────
+  // ── Staff (Gap 7) ──────────────────────────────────────────
   if (module === 'staff') {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
         <BrandStyle />
         <TopBar />
-        <div className="flex-1 overflow-hidden h-full">
-          <StaffOpsModule userId={user.id} restaurantId={restaurant.id} locationId={locations[0]?.id} />
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <StaffModule restaurantId={restaurant.id} locationId={locations[0]?.id ?? ''} />
         </div>
       </div>
     )
