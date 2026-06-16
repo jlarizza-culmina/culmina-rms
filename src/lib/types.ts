@@ -274,6 +274,7 @@ export interface LibraryIngredient {
   notes: string
   is_active: boolean
   created_at?: string
+  updated_at?: string
   vendor_name?: string
   // Nutrition (per 100g, from USDA FoodData Central)
   calories_per_100g?: number | null

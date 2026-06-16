@@ -6,6 +6,8 @@ import { ING_CATEGORIES, SUBCATEGORIES, ALLERGENS, CAT_ICONS } from '@/lib/ingre
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
+type LibrarySortKey = 'name' | 'category' | 'unit' | 'purchase_unit_cost' | 'vendor_name' | 'updated_at'
+
 // Cost per recipe unit: purchase_cost / conversion / trim
 function costPerUnit(lib: LibraryIngredient): number | null {
   if (!lib.purchase_unit_cost || !lib.unit_conversion) return null
@@ -13,6 +15,26 @@ function costPerUnit(lib: LibraryIngredient): number | null {
 }
 
 function fmt$(n: number) { return `$${n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}` }
+
+function sortLibrary(
+  items: LibraryIngredient[],
+  key: LibrarySortKey,
+  dir: 'asc' | 'desc',
+  vendorName: (i: LibraryIngredient) => string,
+): LibraryIngredient[] {
+  return [...items].sort((a, b) => {
+    let cmp = 0
+    switch (key) {
+      case 'name':               cmp = a.name.localeCompare(b.name); break
+      case 'category':           cmp = (a.category ?? '').localeCompare(b.category ?? ''); break
+      case 'unit':               cmp = (a.recipe_unit ?? '').localeCompare(b.recipe_unit ?? ''); break
+      case 'purchase_unit_cost': cmp = (a.purchase_unit_cost ?? 0) - (b.purchase_unit_cost ?? 0); break
+      case 'vendor_name':        cmp = vendorName(a).localeCompare(vendorName(b)); break
+      case 'updated_at':         cmp = (a.updated_at ?? '').localeCompare(b.updated_at ?? ''); break
+    }
+    return dir === 'asc' ? cmp : -cmp
+  })
+}
 
 interface Props {
   userId: string
@@ -46,6 +68,8 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
   const [ingVendor, setIngVendor] = useState('all')
   const [editIng, setEditIng]     = useState<Partial<LibraryIngredient> | null>(null)
   const [savingIng, setSavingIng] = useState(false)
+  const [sortKey, setSortKey]     = useState<LibrarySortKey>('name')
+  const [sortDir, setSortDir]     = useState<'asc' | 'desc'>('asc')
 
   // ── Vendor state ─────────────────────────────────────────────
   const [editVend, setEditVend]   = useState<Partial<Vendor> | null>(null)
@@ -66,6 +90,20 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
     const matchVend   = ingVendor === 'all' || i.vendor_id === ingVendor
     return matchSearch && matchCat && matchVend
   }), [library, ingSearch, ingCat, ingVendor])
+
+  // ── Sorting ───────────────────────────────────────────────────
+  function toggleSort(key: LibrarySortKey) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const sorted = useMemo(() => {
+    const vendorName = (i: LibraryIngredient) => vendors.find(v => v.id === i.vendor_id)?.name ?? ''
+    return sortLibrary(filtered, sortKey, sortDir, vendorName)
+  }, [filtered, sortKey, sortDir, vendors])
+
+  const SortIcon = ({ col }: { col: LibrarySortKey }) =>
+    sortKey === col ? <span className="ml-1 text-[--accent]">{sortDir === 'asc' ? '▲' : '▼'}</span> : null
 
   // ── Ingredient CRUD ───────────────────────────────────────────
   async function saveIngredient() {
@@ -178,7 +216,7 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
 
           {/* Table */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <div className="text-center py-16 text-[--muted]">
                 <div className="text-4xl opacity-20 mb-3">📦</div>
                 <p className="text-sm">No ingredients yet. Add your first to start tracking food costs.</p>
@@ -187,13 +225,32 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-[--border]">
-                    {['Name','Category','Vendor','Purchase','Cost','Recipe unit','$/unit','Trim',''].map(h => (
-                      <th key={h} className="text-left py-2 pr-3 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">{h}</th>
-                    ))}
+                    <th className="text-left py-2 pr-3">
+                      <button onClick={() => toggleSort('name')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text] flex items-center">Name <SortIcon col="name" /></button>
+                    </th>
+                    <th className="text-left py-2 pr-3">
+                      <button onClick={() => toggleSort('category')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text] flex items-center">Category <SortIcon col="category" /></button>
+                    </th>
+                    <th className="text-left py-2 pr-3">
+                      <button onClick={() => toggleSort('vendor_name')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text] flex items-center">Vendor <SortIcon col="vendor_name" /></button>
+                    </th>
+                    <th className="text-left py-2 pr-3">
+                      <button onClick={() => toggleSort('purchase_unit_cost')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text] flex items-center">Purchase <SortIcon col="purchase_unit_cost" /></button>
+                    </th>
+                    <th className="text-left py-2 pr-3 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">Cost</th>
+                    <th className="text-left py-2 pr-3">
+                      <button onClick={() => toggleSort('unit')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text] flex items-center">Recipe unit <SortIcon col="unit" /></button>
+                    </th>
+                    <th className="text-left py-2 pr-3 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">$/unit</th>
+                    <th className="text-left py-2 pr-3 text-[10px] font-semibold uppercase tracking-wide text-[--hint]">Trim</th>
+                    <th className="text-left py-2 pr-3">
+                      <button onClick={() => toggleSort('updated_at')} className="text-[10px] font-semibold uppercase tracking-wide text-[--hint] hover:text-[--text] flex items-center">Updated <SortIcon col="updated_at" /></button>
+                    </th>
+                    <th className="text-left py-2 pr-3 text-[10px] font-semibold uppercase tracking-wide text-[--hint]"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(ing => {
+                  {sorted.map(ing => {
                     const cpu = costPerUnit(ing)
                     const vend = vendors.find(v => v.id === ing.vendor_id)
                     return (
@@ -214,6 +271,9 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
                         </td>
                         <td className="py-2 pr-3 text-[--muted]">
                           {ing.trim_factor < 1 ? `${Math.round(ing.trim_factor * 100)}%` : '100%'}
+                        </td>
+                        <td className="py-2 pr-3 text-[--muted]">
+                          {ing.updated_at ? new Date(ing.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
                         </td>
                         <td className="py-2">
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
