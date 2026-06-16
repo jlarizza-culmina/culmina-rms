@@ -371,6 +371,51 @@ export interface MenuCategory {
   is_active: boolean
 }
 
+export interface Role {
+  id:            string
+  restaurant_id: string | null
+  name:          string
+  description:   string
+  color:         string
+  is_system:     boolean
+  permissions:   Record<string, string>
+  created_at:    string
+  updated_at:    string
+}
+
+export interface StaffMember {
+  id:                      string
+  restaurant_id:           string
+  app_user_id:             string | null
+  name:                    string
+  preferred_name:          string
+  phone:                   string
+  email:                   string
+  photo_url:               string
+  emergency_contact_name:  string
+  emergency_contact_phone: string
+  hire_date:               string | null
+  employment_type:         'full_time' | 'part_time' | 'seasonal' | 'contractor' | null
+  hourly_rate:             number | null
+  status:                  'active' | 'inactive' | 'terminated'
+  pin:                     string
+  primary_location_id:     string | null
+  notes:                   string
+  created_at:              string
+  updated_at:              string
+}
+
+export interface StaffLocationRole {
+  id:                  string
+  staff_id:            string
+  location_id:         string
+  role_id:             string
+  is_primary_location: boolean
+  effective_from:      string
+  effective_until:     string | null
+  created_at:          string
+}
+
 export interface HACCPEquipment {
   id:              string
   location_id:     string

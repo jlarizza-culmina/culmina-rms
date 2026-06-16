@@ -8,6 +8,7 @@ import NutritionEnricher from './NutritionEnricher'
 import GlobalIngredientMapper from './GlobalIngredientMapper'
 import StaffOpsModule from './StaffOpsModule'
 import HACCPEquipmentSettings from './HACCPEquipmentSettings'
+import StaffModule from './StaffModule'
 
 interface Props {
   ctx: AppContext
@@ -16,7 +17,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'staff' | 'haccp_equipment'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'staff' | 'haccp_equipment' | 'staff_members'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -228,6 +229,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     { key: 'locations',    label: 'Locations' },
     { key: 'branding',     label: 'Branding' },
     { key: 'staff',        label: '👥 Staff & Roles' },
+    { key: 'staff_members', label: '👥 Staff' },
     { key: 'haccp_equipment', label: '🌡 HACCP Equipment' },
     { key: 'queue',          label: 'Queue' },
     { key: 'library_import', label: '✨ AI Library Import' },
@@ -663,6 +665,14 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
               locationId={ctx.locations?.[0]?.id}
             />
           </div>
+        )}
+
+        {/* ── Staff (Gap 7) tab ── */}
+        {tab === 'staff_members' && (
+          <StaffModule
+            restaurantId={ctx.restaurant.id}
+            locationId={ctx.locations?.[0]?.id ?? ''}
+          />
         )}
 
         {/* ── HACCP Equipment tab ── */}
