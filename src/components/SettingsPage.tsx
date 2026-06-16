@@ -40,7 +40,15 @@ const DEFAULT_ENTITLEMENTS: Record<string, Record<string, string[]>> = {
 }
 
 const LOC_SEASONS = ['year-round','spring','summer','fall','winter']
-const TIMEZONES = ['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','Pacific/Honolulu','Europe/London','Europe/Paris','Asia/Tokyo']
+const US_TIMEZONES = [
+  { value: 'America/New_York',    label: 'Eastern Time (ET)' },
+  { value: 'America/Chicago',     label: 'Central Time (CT)' },
+  { value: 'America/Denver',      label: 'Mountain Time (MT)' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+  { value: 'America/Phoenix',     label: 'Mountain Time — Arizona (no DST)' },
+  { value: 'America/Anchorage',   label: 'Alaska Time (AKT)' },
+  { value: 'Pacific/Honolulu',    label: 'Hawaii Time (HT)' },
+]
 
 function darkenHex(hex: string, pct = 15): string {
   const n = parseInt(hex.slice(1), 16)
@@ -387,7 +395,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
                           <select value={locDraft.timezone ?? 'America/New_York'}
                             onChange={e => setLocDraft(p => ({ ...p, timezone: e.target.value }))}
                             className="input bg-white">
-                            {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                            {US_TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
                           </select>
                         </Field>
                         <Field label="Street address" cls="col-span-2">

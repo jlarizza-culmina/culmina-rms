@@ -45,17 +45,6 @@ function kphToMph(kph: number): number {
   return Math.round(kph * 0.621371 * 10) / 10
 }
 
-// Determine which capture hour (6, 12, 18) we're closest to
-function captureHour(): 6 | 12 | 18 {
-  const now = new Date()
-  const etHour = parseInt(
-    now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' })
-  )
-  if (etHour < 9)  return 6
-  if (etHour < 15) return 12
-  return 18
-}
-
 export async function GET(req: Request) {
   // Only enforce the cron secret for Vercel cron-triggered requests.
   const isVercelCron = req.headers.get('x-vercel-cron') === '1'
@@ -70,11 +59,23 @@ export async function GET(req: Request) {
   // Manual browser/curl requests always pass through
 
   try {
-    // Fetch current conditions from Open-Meteo (current_weather + hourly for humidity/cloud)
+    // Service-role client (bypasses RLS); resolve the location timezone first.
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const { data: locationData } = await supabase
+      .from('locations')
+      .select('timezone')
+      .eq('id', process.env.NEXT_PUBLIC_LOCATION_ID)
+      .maybeSingle()
+    const tz = locationData?.timezone ?? 'America/New_York'
+
+    // Fetch current conditions from Open-Meteo (current_weather + hourly for humidity)
     const params = new URLSearchParams({
       latitude:    String(DARIEN.lat),
       longitude:   String(DARIEN.lng),
-      timezone:    DARIEN.timezone,
+      timezone:    tz,
       current_weather: 'true',
       hourly: 'relativehumidity_2m,apparent_temperature,precipitation,cloudcover,windgusts_10m',
       forecast_days: '1',
@@ -101,16 +102,21 @@ export async function GET(req: Request) {
     const precipIn   = mmToIn(hourly.precipitation[hi])
     const humidity   = hourly.relativehumidity_2m[hi]
 
-    // Write to Supabase using service role (bypasses RLS)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
     // Get the restaurant_id for Corretto
     const restaurantId = process.env.RESTAURANT_ID ?? null
 
-    const slotMap: Record<6 | 12 | 18, 'morning' | 'noon' | 'evening'> = { 6: 'morning', 12: 'noon', 18: 'evening' }
+    // Capture slot from the location's local hour.
+    const localHour = parseInt(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        hour: 'numeric',
+        hour12: false,
+      }).format(new Date()),
+      10
+    )
+    const capture_slot = localHour < 10 ? 'morning'
+      : localHour < 15 ? 'noon'
+      : 'evening'
 
     const capture = {
       restaurant_id: restaurantId,
@@ -123,7 +129,7 @@ export async function GET(req: Request) {
       precipitation: precipIn,
       weather_code:  weatherCode,
       condition:     wmoLabel(weatherCode),
-      capture_slot:  slotMap[captureHour()],
+      capture_slot,
     }
 
     // Weather observations are append-only — keep every capture as a new row.

@@ -237,6 +237,9 @@ export default function HACCPModule({ locationId, locationName }: Props) {
   }, [recentLogs])
 
   // Missing logs for past days (today-1 .. today-7); today is not flagged.
+  // NOTE: uses the browser's local timezone via Date(), which is fine for
+  // client-side display. Will move to server-side, location-tz-aware date
+  // calculation when that's added.
   const missingSlots = useMemo(() => {
     const result: { date: string; slot: LogSlot }[] = []
     for (let i = 1; i <= 7; i++) {
