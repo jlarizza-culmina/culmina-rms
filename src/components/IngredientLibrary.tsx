@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from 'react'
 import type { LibraryIngredient, Vendor } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import { ING_CATEGORIES, SUBCATEGORIES, ALLERGENS, CAT_ICONS } from '@/lib/ingredientConstants'
+import { PURCHASE_UNIT_OPTIONS } from '@/lib/unitConversion'
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
 
@@ -200,7 +201,8 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
       category: editIng.category || 'other',
       sub_category: (editIng as any).sub_category || null,
       vendor_id: editIng.vendor_id || null,
-      purchase_unit: editIng.purchase_unit || '',
+      purchase_unit_qty: editIng.purchase_unit_qty ?? null,
+      purchase_unit_label: editIng.purchase_unit_label || null,
       purchase_unit_cost: editIng.purchase_unit_cost ?? null,
       purchase_unit_size: editIng.purchase_unit_size ?? null,
       recipe_unit: editIng.recipe_unit || '',
@@ -478,9 +480,28 @@ export default function IngredientLibrary({ userId, vendors, library, onLibraryC
               <div className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Purchase Info</div>
             </div>
             <div>
-              <Label>Purchase unit</Label>
-              <input value={editIng.purchase_unit || ''} onChange={e => setEditIng(p => ({ ...p!, purchase_unit: e.target.value }))}
-                placeholder="lb, case/6, 750ml bottle" className="fi w-full" />
+              <div className="flex gap-2">
+                <div className="w-[30%]">
+                  <Label>Purchase qty</Label>
+                  <input type="number" min="0" step="any"
+                    value={editIng.purchase_unit_qty ?? ''}
+                    onChange={e => setEditIng(p => ({ ...p!, purchase_unit_qty: e.target.value ? parseFloat(e.target.value) : undefined }))}
+                    placeholder="750" className="fi w-full" />
+                </div>
+                <div className="w-[70%]">
+                  <Label>Unit</Label>
+                  <select value={editIng.purchase_unit_label ?? ''}
+                    onChange={e => setEditIng(p => ({ ...p!, purchase_unit_label: e.target.value }))}
+                    className="fi w-full bg-white">
+                    <option value="">— select unit —</option>
+                    {PURCHASE_UNIT_OPTIONS.map(g => (
+                      <optgroup key={g.group} label={g.group}>
+                        {g.options.map(o => <option key={o} value={o}>{o}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
             <div>
               <Label>Cost per purchase unit ($)</Label>

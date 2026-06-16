@@ -264,6 +264,8 @@ export interface LibraryIngredient {
   description?: string
   vendor_id: string | null
   purchase_unit: string
+  purchase_unit_qty?: number
+  purchase_unit_label?: string
   purchase_unit_cost: number | null
   purchase_unit_size: number | null
   recipe_unit: string

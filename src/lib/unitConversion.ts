@@ -5,6 +5,17 @@
 export type UnitClass = 'metric_volume' | 'imperial_volume' |
                         'metric_weight' | 'imperial_weight' | 'count'
 
+// Grouped dropdown options for selecting an ingredient's purchase unit.
+export const PURCHASE_UNIT_OPTIONS: { group: string; options: string[] }[] = [
+  { group: 'Weight',    options: ['g','kg','oz','lb'] },
+  { group: 'Volume',    options: ['ml','L','fl oz','cup','pint','quart','gallon'] },
+  { group: 'Container', options: ['each','bottle','can','jar','bag','box',
+                                   'case','tray','bunch','head','sheet','roll'] },
+  { group: 'Preset',    options: ['750ml bottle','1L bottle','1.75L handle',
+                                   '375ml bottle','6-pack','12-pack',
+                                   'case (12)','case (24)','carton (12)'] },
+]
+
 export function classifyUnit(unit: string): UnitClass {
   const u = unit.toLowerCase().trim()
   if (['ml','l','cl','litre','liter'].includes(u)) return 'metric_volume'
