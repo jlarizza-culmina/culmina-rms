@@ -141,6 +141,10 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
       effective_from:      asnDraft.effective_from || todayStr(),
       effective_until:     asnDraft.effective_until || null,
     })
+    // Keep the staff record's primary location in sync when this assignment is primary.
+    if (asnDraft.is_primary_location) {
+      await supabase.from('staff_members').update({ primary_location_id: asnDraft.location_id }).eq('id', draft.id)
+    }
     setAsnDraft(null)
     load()
   }
