@@ -30,10 +30,6 @@ function wmoLabel(code: number): string {
   return 'Thunderstorm'
 }
 
-function isPrecipitation(code: number): boolean {
-  return code >= 20 && code !== 3
-}
-
 // C to F conversion
 function celsiusToF(c: number): number {
   return Math.round((c * 9/5 + 32) * 10) / 10
