@@ -120,6 +120,7 @@ export async function GET(req: Request) {
 
     const capture = {
       restaurant_id: restaurantId,
+      location_id:   process.env.NEXT_PUBLIC_LOCATION_ID ?? null,
       observed_at:   new Date().toISOString(),
       temp_f:        tempF,
       temp_c:        Math.round(((tempF - 32) * 5 / 9) * 10) / 10,

@@ -9,6 +9,7 @@ import WeatherAnalyticsPanel from './WeatherAnalyticsPanel'
 interface Props {
   userId: string
   restaurantId?: string
+  locationId?: string
 }
 
 type ReportType = 'margins' | 'fat_tail' | 'toast' | 'weather'
@@ -38,7 +39,7 @@ interface IngredientStat {
   risk: 'tail' | 'monitor' | 'core'
 }
 
-export default function AnalyticsModule({ userId, restaurantId }: Props) {
+export default function AnalyticsModule({ userId, restaurantId, locationId }: Props) {
   const supabase = createClient()
   const [report,  setReport]  = useState<ReportType>('margins')
   const [recipes, setRecipes] = useState<Recipe[]>([])
@@ -306,8 +307,8 @@ export default function AnalyticsModule({ userId, restaurantId }: Props) {
                 Captured at 6am, noon, and 6pm via Open-Meteo. Used to anticipate commuter behaviour and menu demand.
               </p>
             </div>
-            <WeatherWidget restaurantId={restaurantId} />
-            <WeatherAnalyticsPanel restaurantId={restaurantId} days={30} />
+            <WeatherWidget restaurantId={restaurantId} locationId={locationId} />
+            <WeatherAnalyticsPanel restaurantId={restaurantId} locationId={locationId} days={30} />
           </div>
         )}
       </div>

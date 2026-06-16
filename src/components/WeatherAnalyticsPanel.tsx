@@ -5,34 +5,34 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
-import { weatherEmoji, type WeatherDailySummary } from '@/lib/weatherUtils'
+import { weatherEmoji, summarizeByDay, applyWeatherScope, type WeatherObservation, type WeatherDailySummary } from '@/lib/weatherUtils'
 
 interface Props {
   restaurantId?: string
+  locationId?: string
   days?: number
 }
 
-export default function WeatherAnalyticsPanel({ restaurantId, days = 30 }: Props) {
+export default function WeatherAnalyticsPanel({ restaurantId, locationId, days = 30 }: Props) {
   const supabase = createClient()
   const [summaries, setSummaries] = useState<WeatherDailySummary[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      if (!restaurantId) { setLoading(false); return }
+      if (!restaurantId && !locationId) { setLoading(false); return }
       const since = new Date()
       since.setDate(since.getDate() - days)
-      const { data } = await (supabase as any)
-        .from('weather_daily_summary')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .gte('capture_date', since.toISOString().split('T')[0])
-        .order('capture_date', { ascending: true })
-      setSummaries(data ?? [])
+      let query = supabase.from('weather_observations').select('*')
+      query = applyWeatherScope(query, locationId, restaurantId)
+      const { data } = await query
+        .gte('observed_at', `${since.toISOString().split('T')[0]}T00:00:00`)
+        .order('observed_at', { ascending: true })
+      setSummaries(summarizeByDay((data ?? []) as WeatherObservation[]))
       setLoading(false)
     }
     load()
-  }, [restaurantId, days])
+  }, [restaurantId, locationId, days])
 
   if (loading || summaries.length === 0) return null
 
@@ -105,11 +105,10 @@ export default function WeatherAnalyticsPanel({ restaurantId, days = 30 }: Props
         {summaries.slice(-7).map(s => {
           const date = new Date(s.capture_date + 'T12:00:00')
           const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
-          const avgCode = s.had_precipitation ? 61 : (s.avg_cloud_cover ?? 0) > 75 ? 3 : (s.avg_cloud_cover ?? 0) > 25 ? 2 : 0
           return (
             <div key={s.capture_date} className="text-center p-1.5 bg-[--surface-2] rounded-lg">
               <div className="text-[9px] text-[--hint]">{dayName}</div>
-              <div className="text-lg my-0.5">{weatherEmoji(avgCode)}</div>
+              <div className="text-lg my-0.5">{weatherEmoji(s.weather_code)}</div>
               <div className="text-[10px] font-medium text-[--text]">{Math.round(s.avg_temp_f ?? 0)}°</div>
               {s.had_precipitation && (
                 <div className="text-[9px] text-blue-500">🌧</div>

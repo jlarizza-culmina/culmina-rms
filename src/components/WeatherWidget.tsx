@@ -1,69 +1,71 @@
 // src/components/WeatherWidget.tsx
-// Shows today's weather captures + commuter sentiment hints
-// Used in AnalyticsModule and ProductionPlanner header
+// Shows today's weather observations + commuter sentiment hints
 
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import {
-  type WeatherCapture,
+  type WeatherObservation,
   weatherEmoji,
   commuterSentiment,
   SENTIMENT_HINTS,
   formatTemp,
   formatPrecip,
+  applyWeatherScope,
 } from '@/lib/weatherUtils'
 
 interface Props {
   restaurantId?: string
+  locationId?: string
   compact?: boolean   // true = just the current condition pill
 }
 
-const HOUR_LABELS: Record<number, string> = { 6: 'Morning', 12: 'Midday', 18: 'Evening' }
+const SLOTS = ['morning', 'noon', 'evening'] as const
+const SLOT_LABELS: Record<string, string> = { morning: 'Morning', noon: 'Midday', evening: 'Evening' }
 
-export default function WeatherWidget({ restaurantId, compact = false }: Props) {
+export default function WeatherWidget({ restaurantId, locationId, compact = false }: Props) {
   const supabase = createClient()
-  const [captures, setCaptures] = useState<WeatherCapture[]>([])
+  const [captures, setCaptures] = useState<WeatherObservation[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      if (!restaurantId) { setLoading(false); return }
+      if (!restaurantId && !locationId) { setLoading(false); return }
       const today = new Date().toISOString().split('T')[0]
-      const { data } = await supabase
-        .from('weather_captures')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .gte('captured_at', `${today}T00:00:00`)
-        .lte('captured_at', `${today}T23:59:59`)
-        .order('capture_hour')
-      setCaptures(data ?? [])
+      let query = supabase.from('weather_observations').select('*')
+      query = applyWeatherScope(query, locationId, restaurantId)
+      const { data } = await query
+        .gte('observed_at', `${today}T00:00:00`)
+        .lte('observed_at', `${today}T23:59:59`)
+        .order('observed_at')
+      setCaptures((data ?? []) as WeatherObservation[])
       setLoading(false)
     }
     load()
-  }, [restaurantId])
+  }, [restaurantId, locationId])
 
   if (loading) return null
   if (captures.length === 0) {
     if (compact) return null
     return (
       <div className="text-[11px] text-[--hint] p-3 bg-[--surface-2] rounded-lg">
-        No weather data yet — will appear after first cron run at 6am ET.
+        No weather data yet — will appear after the next capture (6am / noon / 6pm).
       </div>
     )
   }
 
   // Most recent capture
   const latest = captures[captures.length - 1]
-  const sentiment = commuterSentiment(latest.temperature_f, latest.is_precipitation)
+  const latestPrecip = (latest.precipitation ?? 0) > 0
+  const sentiment = commuterSentiment(latest.temp_f, latestPrecip)
   const hint = SENTIMENT_HINTS[sentiment]
 
   if (compact) {
     return (
       <div className="flex items-center gap-1.5 text-[11px] text-[--muted]">
         <span>{weatherEmoji(latest.weather_code)}</span>
-        <span>{formatTemp(latest.temperature_f)}</span>
-        <span className="text-[--hint]">{latest.condition_label}</span>
+        <span>{formatTemp(latest.temp_f)}</span>
+        <span className="text-[--hint]">{latest.condition}</span>
       </div>
     )
   }
@@ -81,23 +83,23 @@ export default function WeatherWidget({ restaurantId, compact = false }: Props) 
 
       {/* Three capture slots */}
       <div className="grid grid-cols-3 gap-2">
-        {([6, 12, 18] as const).map(hour => {
-          const cap = captures.find(c => c.capture_hour === hour)
+        {SLOTS.map(slot => {
+          const cap = captures.find(c => c.capture_slot === slot)
           return (
-            <div key={hour} className={`rounded-lg p-2.5 text-center ${cap ? 'bg-white border border-[--border]' : 'bg-[--surface-2] border border-dashed border-[--border]'}`}>
-              <div className="text-[10px] text-[--hint] mb-1">{HOUR_LABELS[hour]}</div>
+            <div key={slot} className={`rounded-lg p-2.5 text-center ${cap ? 'bg-white border border-[--border]' : 'bg-[--surface-2] border border-dashed border-[--border]'}`}>
+              <div className="text-[10px] text-[--hint] mb-1">{SLOT_LABELS[slot]}</div>
               {cap ? (
                 <>
                   <div className="text-2xl mb-1">{weatherEmoji(cap.weather_code)}</div>
-                  <div className="text-sm font-medium text-[--text]">{formatTemp(cap.temperature_f)}</div>
+                  <div className="text-sm font-medium text-[--text]">{formatTemp(cap.temp_f)}</div>
                   <div className="text-[10px] text-[--muted] mt-0.5">
-                    Feels {formatTemp(cap.apparent_temp_f)}
+                    Feels {formatTemp(cap.feels_like_f)}
                   </div>
-                  {cap.humidity_pct !== null && (
-                    <div className="text-[10px] text-[--hint]">💧{cap.humidity_pct}%</div>
+                  {cap.humidity !== null && (
+                    <div className="text-[10px] text-[--hint]">💧{cap.humidity}%</div>
                   )}
-                  {cap.is_precipitation && cap.precipitation_in !== null && cap.precipitation_in > 0 && (
-                    <div className="text-[10px] text-blue-500">{formatPrecip(cap.precipitation_in)} rain</div>
+                  {(cap.precipitation ?? 0) > 0 && (
+                    <div className="text-[10px] text-blue-500">{formatPrecip(cap.precipitation)} rain</div>
                   )}
                 </>
               ) : (
@@ -120,15 +122,10 @@ export default function WeatherWidget({ restaurantId, compact = false }: Props) 
         </div>
       )}
 
-      {/* Wind + precip summary */}
-      {latest && (
+      {/* Wind summary */}
+      {latest.wind_mph !== null && (
         <div className="flex gap-4 text-[10px] text-[--hint]">
-          {latest.wind_speed_mph !== null && (
-            <span>💨 {latest.wind_speed_mph} mph{latest.wind_gust_mph ? ` (gusts ${latest.wind_gust_mph})` : ''}</span>
-          )}
-          {latest.cloud_cover_pct !== null && (
-            <span>☁️ {latest.cloud_cover_pct}% cloud</span>
-          )}
+          <span>💨 {latest.wind_mph} mph</span>
         </div>
       )}
     </div>
