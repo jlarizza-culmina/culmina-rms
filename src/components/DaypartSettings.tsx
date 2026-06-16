@@ -5,9 +5,10 @@
 // ASSUMED SCHEMA (columns not specified in the ticket — adjust here if the
 // real tables differ):
 //   daypart_configs:   id, location_id, name, time_type, sort_order, locked_at
-//   daypart_schedule:  id, daypart_config_id, day_of_week (0=Sun..6=Sat),
+//   daypart_schedule:  id, daypart_id, day_of_week (smallint, 0=Sun..6=Sat),
 //                      is_active, open_time, kitchen_close_time, close_time
-//   Times are stored as 12-hour strings, e.g. "6:00 AM".
+//   Time columns are PostgreSQL `time` (24-hour "HH:MM:SS"); converted to/from
+//   12-hour strings for display via to12Hour/to24Hour.
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 
@@ -29,7 +30,7 @@ interface DaypartConfig {
 
 interface ScheduleRow {
   id?: string
-  daypart_config_id: string
+  daypart_id: string
   day_of_week: number
   is_active: boolean
   open_time: string | null
@@ -80,6 +81,29 @@ const TIME_OPTIONS: string[] = (() => {
   return out
 })()
 
+// "6:00 AM" → "06:00", "10:30 PM" → "22:30", "" → ""
+function to24Hour(time12: string): string {
+  if (!time12) return ''
+  const m = time12.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!m) return ''
+  let h = parseInt(m[1], 10)
+  const ap = m[3].toUpperCase()
+  if (ap === 'AM') { if (h === 12) h = 0 }
+  else if (h !== 12) h += 12
+  return `${String(h).padStart(2, '0')}:${m[2]}`
+}
+
+// "06:00:00" → "6:00 AM", "22:30:00" → "10:30 PM", "" → ""
+function to12Hour(time24: string): string {
+  if (!time24) return ''
+  const m = time24.trim().match(/^(\d{1,2}):(\d{2})/)
+  if (!m) return ''
+  const h = parseInt(m[1], 10)
+  const ap = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 || 12
+  return `${h12}:${m[2]} ${ap}`
+}
+
 function blankDays(name: string): DayDraft[] {
   const def = DEFAULT_TIMES[name.trim().toLowerCase()]
   return DAY_ABBR.map((_, i) => ({
@@ -123,11 +147,18 @@ export default function DaypartSettings({ locationId, locationName }: Props) {
     const ids = list.map(d => d.id)
     if (ids.length) {
       const { data: sched } = await supabase.from('daypart_schedule').select('*')
-        .in('daypart_config_id', ids)
+        .in('daypart_id', ids)
       const map: Record<string, ScheduleRow[]> = {}
       for (const row of (sched ?? []) as ScheduleRow[]) {
-        if (!map[row.daypart_config_id]) map[row.daypart_config_id] = []
-        map[row.daypart_config_id].push(row)
+        // DB stores 24-hour time; convert to 12-hour for display.
+        const displayRow: ScheduleRow = {
+          ...row,
+          open_time:          to12Hour(row.open_time ?? '') || null,
+          kitchen_close_time: to12Hour(row.kitchen_close_time ?? '') || null,
+          close_time:         to12Hour(row.close_time ?? '') || null,
+        }
+        if (!map[row.daypart_id]) map[row.daypart_id] = []
+        map[row.daypart_id].push(displayRow)
       }
       setSchedules(map)
     } else {
@@ -190,7 +221,7 @@ export default function DaypartSettings({ locationId, locationName }: Props) {
     if (draft.id) {
       await supabase.from('daypart_configs')
         .update({ name: draft.name.trim(), time_type: draft.time_type }).eq('id', draft.id)
-      await supabase.from('daypart_schedule').delete().eq('daypart_config_id', draft.id)
+      await supabase.from('daypart_schedule').delete().eq('daypart_id', draft.id)
     } else {
       const { data } = await supabase.from('daypart_configs').insert({
         location_id: locationId, name: draft.name.trim(), time_type: draft.time_type,
@@ -201,12 +232,12 @@ export default function DaypartSettings({ locationId, locationName }: Props) {
 
     if (daypartId) {
       await supabase.from('daypart_schedule').insert(rows.map(d => ({
-        daypart_config_id:  daypartId,
+        daypart_id:         daypartId,
         day_of_week:        d.day_of_week,
         is_active:          d.is_active,
-        open_time:          d.is_active && d.open_time ? d.open_time : null,
-        kitchen_close_time: d.is_active && d.kitchen_close_time ? d.kitchen_close_time : null,
-        close_time:         d.is_active && d.close_time ? d.close_time : null,
+        open_time:          d.is_active && d.open_time ? to24Hour(d.open_time) || null : null,
+        kitchen_close_time: d.is_active && d.kitchen_close_time ? to24Hour(d.kitchen_close_time) || null : null,
+        close_time:         d.is_active && d.close_time ? to24Hour(d.close_time) || null : null,
       })))
     }
     setSaving(false)
