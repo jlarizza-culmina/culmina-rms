@@ -14,7 +14,10 @@ export function to24Hour(time12: string): string {
 
 export function to12Hour(time24: string): string {
   if (!time24) return ''
-  const [hoursStr, minutes] = time24.split(':')
+  const parts = time24.split(':')
+  const hoursStr = parts[0]
+  const minutes = parts[1] ?? '00'
+  // seconds (parts[2]) are intentionally ignored
   let hours = parseInt(hoursStr, 10)
   const period = hours >= 12 ? 'PM' : 'AM'
   if (hours > 12) hours -= 12
