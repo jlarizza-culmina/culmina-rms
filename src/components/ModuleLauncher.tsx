@@ -66,6 +66,13 @@ const MODULES: ModuleCard[] = [
     requiresCosting: true,
   },
   {
+    module: 'haccp',
+    icon: '🌡',
+    label: 'HACCP',
+    description: 'Temperature logs & compliance',
+    color: '#2E6B25',
+  },
+  {
     module: 'settings',
     icon: '⚙️',
     label: 'Settings',

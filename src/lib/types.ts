@@ -7,7 +7,7 @@ export type DishMode        = 'single' | 'composed'
 export type UserRole        = 'super_admin' | 'admin' | 'chef' | 'manager' | 'foh'
 export type MenuItemStatus  = 'not_on_menu' | 'orderable' | 'on_menu' | 'special'
 export type RecipeStage     = 'development' | 'testing' | 'active' | 'specials_candidate' | 'retired'
-export type AppModule       = 'home' | 'recipes' | 'menus' | 'library' | 'production' | 'schedule' | 'analytics' | 'settings' | 'superadmin' | 'queue' | 'staff'
+export type AppModule       = 'home' | 'recipes' | 'menus' | 'library' | 'production' | 'schedule' | 'analytics' | 'settings' | 'superadmin' | 'queue' | 'staff' | 'haccp'
 
 // ── Multi-tenant types ────────────────────────────────────────
 export interface AppUser {
@@ -369,6 +369,54 @@ export interface MenuCategory {
   sort_order: number
   is_bar: boolean
   is_active: boolean
+}
+
+export interface HACCPEquipment {
+  id:              string
+  location_id:     string
+  name:            string
+  equipment_type:  'walk_in' | 'reach_in' | 'freezer' | 'hot_hold' | 'prep_surface' | 'other'
+  target_temp_min: number
+  target_temp_max: number
+  temp_unit:       'F' | 'C'
+  log_slots:       string[]
+  is_active:       boolean
+  notes:           string
+  sort_order:      number
+  created_at:      string
+}
+
+export interface TemperatureLog {
+  id:               string
+  location_id:      string
+  equipment_id:     string
+  log_slot:         string
+  recorded_at:      string
+  temp_value:       number
+  temp_unit:        'F' | 'C'
+  recorded_by:      string
+  recording_method: 'manual' | 'sensor'
+  is_compliant:     boolean | null
+  notes:            string
+  created_at:       string
+}
+
+export interface CorrectiveAction {
+  id:               string
+  location_id:      string
+  trigger_type:     'temperature_log' | 'receiving_log' | 'cooking_log' | 'batch_expiry' | 'manual'
+  trigger_id:       string | null
+  discovered_at:    string
+  discovered_by:    string
+  description:      string
+  action_taken:     string
+  items_affected:   string
+  items_discarded:  boolean
+  resolved_at:      string | null
+  resolved_by:      string
+  status:           'open' | 'resolved' | 'verified'
+  notes:            string
+  created_at:       string
 }
 
 export interface RecipeCostSummary {
