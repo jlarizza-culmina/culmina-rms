@@ -376,6 +376,7 @@ export interface HACCPEquipment {
   location_id:     string
   name:            string
   equipment_type:  'walk_in' | 'reach_in' | 'freezer' | 'hot_hold' | 'prep_surface' | 'other'
+  physical_location?: string
   target_temp_min: number
   target_temp_max: number
   temp_unit:       'F' | 'C'
