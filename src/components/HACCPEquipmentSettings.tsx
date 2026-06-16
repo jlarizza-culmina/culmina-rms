@@ -8,6 +8,7 @@ import type { HACCPEquipment } from '@/lib/types'
 interface Props {
   locationId?: string
   restaurantId?: string
+  locationName?: string
 }
 
 const TYPE_OPTIONS: { value: HACCPEquipment['equipment_type']; label: string }[] = [
@@ -32,7 +33,7 @@ const blankEquipment = (): Partial<HACCPEquipment> => ({
   log_slots: ['opening', 'closing'], is_active: true, notes: '',
 })
 
-export default function HACCPEquipmentSettings({ locationId }: Props) {
+export default function HACCPEquipmentSettings({ locationId, locationName }: Props) {
   const supabase = createClient()
   const [equipment, setEquipment] = useState<HACCPEquipment[]>([])
   const [loading, setLoading] = useState(true)
@@ -101,6 +102,11 @@ export default function HACCPEquipmentSettings({ locationId }: Props) {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h2 className="font-serif text-lg font-medium text-[--text]">{locationName ? `${locationName} — ` : ''}HACCP Equipment</h2>
+        <p className="text-xs text-[--muted] mt-0.5">Configure the refrigeration units and equipment monitored at this location.</p>
+      </div>
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-[--muted]">
           Manage the refrigeration and hot-hold units logged in the HACCP module. Equipment is deactivated, never deleted — historical temperature logs reference it.

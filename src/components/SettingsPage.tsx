@@ -670,6 +670,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
           <HACCPEquipmentSettings
             locationId={ctx.locations?.[0]?.id}
             restaurantId={ctx.restaurant.id}
+            locationName={ctx.locations?.[0]?.name}
           />
         )}
       </div>
