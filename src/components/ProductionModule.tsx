@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import type { Recipe, LibraryIngredient } from '@/lib/types'
 import { TasksTab, LabelsTab } from './StaffOpsTasksLabels'
 import { formatNative, formatEnglish, formatMetric, formatPurchase } from '@/lib/unitConversion'
+import { getForecastForDate } from '@/lib/coverForecast'
 
 // ── Types ─────────────────────────────────────────────────────
 type MenuType = 'morning' | 'aperitivo' | 'dinner' | 'drinks' | 'specials'
@@ -110,6 +111,10 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
   const [saved,        setSaved]        = useState(false)
   const [saveError,    setSaveError]    = useState<string | null>(null)
   const [recentDates,  setRecentDates]  = useState<string[]>([])
+  // Cover forecast pre-fill
+  const [forecastByDaypart, setForecastByDaypart] = useState<Record<string, number>>({})
+  const [daypartMap,        setDaypartMap]        = useState<{ id: string; menu_type: MenuType }[]>([])
+  const [prefilledTypes,    setPrefilledTypes]    = useState<Set<MenuType>>(new Set())
   const [pullSortKey,     setPullSortKey]     = useState<PullSortKey>('category')
   const [pullSortDir,     setPullSortDir]     = useState<'asc' | 'desc'>('asc')
   const [groupByCategory, setGroupByCategory] = useState(true)
@@ -165,6 +170,24 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
     setMenuRecipes(menuItems)
 
+    // ── Cover forecast: map dayparts → menu types, resolve forecast covers ──
+    const fcByType: Partial<Record<MenuType, number>> = {}
+    const fcByDaypart: Record<string, number> = {}
+    const dpMap: { id: string; menu_type: MenuType }[] = []
+    if (locationId) {
+      const { data: dpConfigs } = await supabase.from('daypart_configs').select('id,name').eq('location_id', locationId)
+      const forecast = await getForecastForDate(supabase, locationId, new Date(`${date}T12:00:00`))
+      for (const dp of (dpConfigs ?? []) as { id: string; name: string }[]) {
+        const lower = dp.name.toLowerCase().trim()
+        const mt = (SERVICE_TYPES as string[]).includes(lower) ? (lower as MenuType) : null
+        if (!mt) continue
+        dpMap.push({ id: dp.id, menu_type: mt })
+        if (forecast[dp.id] != null) { fcByType[mt] = forecast[dp.id]; fcByDaypart[dp.id] = forecast[dp.id] }
+      }
+    }
+    setForecastByDaypart(fcByDaypart)
+    setDaypartMap(dpMap)
+
     // Load existing production plan for this date
     const { data: prod } = await supabase
       .from('daily_production').select('*')
@@ -174,6 +197,7 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
     if (prod) {
       setProduction(prod)
+      setPrefilledTypes(new Set())  // saved plan — operator values preserved
       const { data: pItems } = await supabase
         .from('production_items').select('*').eq('production_id', prod.id)
 
@@ -193,6 +217,19 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
         }
       }))
     } else {
+      // Fresh date — start clean and pre-fill covers from the forecast.
+      setProduction({
+        production_date:       date,
+        covers_morning:        fcByType.morning   ?? 0,
+        covers_aperitivo:      fcByType.aperitivo ?? 0,
+        covers_dinner:         fcByType.dinner    ?? 0,
+        covers_drinks:         fcByType.drinks    ?? 0,
+        covers_specials:       fcByType.specials  ?? 0,
+        service_time_morning:  480, service_time_aperitivo: 1080,
+        service_time_dinner:   1080, service_time_drinks: 1080, service_time_specials: 1080,
+        notes: '',
+      })
+      setPrefilledTypes(new Set(Object.keys(fcByType) as MenuType[]))
       setItems(menuItems.map((mi: any) => ({
         recipe_id:        mi.recipe_id,
         recipe:           allRecipes.find((r: any) => r.id === mi.recipe_id),
@@ -209,13 +246,14 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
       .order('production_date', { ascending: false }).limit(10)
     setRecentDates((pastPlans ?? []).map((p: any) => p.production_date))
     setLoading(false)
-  }, [restaurantId, userId, date])
+  }, [restaurantId, userId, date, locationId])
 
   useEffect(() => { load() }, [load])
 
   // ── Update cover count ────────────────────────────────────────
   function setCovers(type: MenuType, val: number) {
     setProduction(p => ({ ...p, [`covers_${type}`]: val }))
+    setPrefilledTypes(prev => { if (!prev.has(type)) return prev; const n = new Set(prev); n.delete(type); return n })
   }
   function getCovers(type: MenuType): number {
     return (production as any)[`covers_${type}`] ?? 0
@@ -295,6 +333,25 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
 
       if (toInsert.length > 0) {
         await supabase.from('production_items').insert(toInsert)
+      }
+
+      // Record forecast vs actual covers (best-effort — never blocks the save).
+      try {
+        if (locationId && daypartMap.length) {
+          for (const dp of daypartMap) {
+            await supabase.from('cover_forecast_actuals').upsert({
+              location_id:       locationId,
+              daypart_id:        dp.id,
+              cover_date:        date,
+              production_covers: (production as any)[`covers_${dp.menu_type}`] ?? 0,
+              forecast_covers:   forecastByDaypart[dp.id] ?? 0,
+              source:            'production_plan',
+              recorded_at:       new Date().toISOString(),
+            }, { onConflict: 'location_id,daypart_id,cover_date' })
+          }
+        }
+      } catch (e) {
+        console.error('[cover_forecast_actuals]', e)
       }
 
       setProduction(prev => ({ ...prev, id: prod.id }))
@@ -612,17 +669,23 @@ export default function ProductionModule({ userId, restaurantId, locationId }: P
           {/* Cover inputs */}
           <div>
             <h2 className="font-serif text-sm font-medium text-[--text] mb-3">Expected Covers</h2>
+            {prefilledTypes.size > 0 && (
+              <div className="mb-3 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                📈 Covers pre-filled from forecast — review and adjust if needed.
+              </div>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {SERVICE_TYPES.map(type => {
                 const count = itemsByService[type]?.length ?? 0
                 if (count === 0) return null
+                const isPrefilled = prefilledTypes.has(type)
                 return (
                   <div key={type} className="bg-white rounded-xl border border-[--border] p-3">
                     <div className="text-[11px] text-[--muted] mb-2">{SERVICE_LABELS[type]}</div>
                     <input type="number" min="0" value={getCovers(type) || ''}
                       onChange={e => setCovers(type, parseInt(e.target.value) || 0)}
                       placeholder="0"
-                      className="w-full text-xl font-medium text-[--text] bg-transparent outline-none border-b border-[--border-2] focus:border-[--accent] pb-1" />
+                      className={`w-full text-xl font-medium bg-transparent outline-none border-b pb-1 focus:border-[--accent] ${isPrefilled ? 'italic text-blue-700 border-blue-200 bg-blue-50/40' : 'text-[--text] border-[--border-2]'}`} />
                     <div className="text-[9px] text-[--hint] mt-1">covers · {count} items</div>
                     {/* Service time */}
                     <select value={getServiceTime(type)}
