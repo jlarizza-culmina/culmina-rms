@@ -67,6 +67,31 @@ interface DeliveryDraft {
 }
 const blankRecvLine = (): DeliveryLine => ({ item_name: '', library_id: null, temp_checked: true, temp_value: '', critical_limit: '41', accepted: true, rejection_reason: '', batch_id: '', expiry_date: '', notes: '' })
 
+interface CookingLog {
+  id: string
+  location_id: string
+  item_name: string
+  recipe_id: string | null
+  cook_method: string
+  target_temp: number | null
+  internal_temp: number
+  cook_time_minutes: number | null
+  batch_description: string
+  recorded_by: string
+  is_compliant: boolean
+  notes: string
+  recorded_at: string
+}
+const COOK_METHODS: { value: string; label: string; target: number | null }[] = [
+  { value: 'reheating',        label: 'Reheating (165°F)', target: 165 },
+  { value: 'hot_hold',         label: 'Hot Hold (140°F+)', target: 140 },
+  { value: 'sous_vide_verify', label: 'Sous Vide Check',   target: 145 },
+  { value: 'stovetop',         label: 'Stovetop',          target: null },
+  { value: 'oven',             label: 'Oven',              target: null },
+  { value: 'other',            label: 'Other',             target: null },
+]
+const COOK_METHOD_LABELS: Record<string, string> = { reheating: 'Reheating', hot_hold: 'Hot Hold', sous_vide_verify: 'Sous Vide Check', stovetop: 'Stovetop', oven: 'Oven', other: 'Other' }
+
 function todayStr(): string { return new Date().toISOString().split('T')[0] }
 function dateOf(iso: string): string { return iso.split('T')[0] }
 function nowLocalDatetime(): string {
@@ -193,7 +218,39 @@ function printReceivingLog(
   if (w) { w.document.write(html); w.document.close(); w.print() }
 }
 
-export default function HACCPModule({ locationId, locationName }: Props) {
+function printCookingLog(logs: CookingLog[], locationName: string, dateFrom: string, dateTo: string) {
+  const fmt = (d: string) => new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const rows = logs.map(l => `<tr style="${l.is_compliant ? '' : 'color:#c0392b'}">
+      <td>${fmt(l.recorded_at)}</td><td>${l.item_name}</td><td>${COOK_METHOD_LABELS[l.cook_method] ?? l.cook_method}</td>
+      <td>${l.target_temp != null ? `${l.target_temp}°F` : '—'}</td><td>${l.internal_temp}°F</td>
+      <td>${l.is_compliant ? '✓' : '✗'}</td><td>${l.batch_description || '—'}</td><td>${l.recorded_by || '—'}</td><td>${l.notes || ''}</td>
+    </tr>`).join('')
+  const html = `<!DOCTYPE html><html><head><title>Cooking Log</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 20px; }
+      h2 { font-size: 13px; margin-bottom: 2px; }
+      p.meta { font-size: 9px; color: #555; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f0ede8; text-align: left; padding: 3px 6px; font-size: 8px; text-transform: uppercase; border-bottom: 2px solid #ccc; }
+      td { padding: 3px 6px; border-bottom: 1px solid #eee; }
+      .footer { font-size: 8px; color: #999; margin-top: 16px; }
+      @media print { body { margin: 0; } }
+    </style></head><body>
+    <h2>Cooking / Reheating Log</h2>
+    <p class="meta">${locationName} · ${dateFrom} – ${dateTo} · Generated ${new Date().toLocaleDateString()}</p>
+    <table>
+      <thead><tr>
+        <th>Date/Time</th><th>Item</th><th>Method</th><th>Target</th><th>Actual</th><th>Compliant</th><th>Batch desc</th><th>By</th><th>Notes</th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="9">No cooking logs for this period</td></tr>'}</tbody>
+    </table>
+    <p class="footer">HACCP Cooking/Reheating Log · ${locationName} · ${dateFrom} – ${dateTo}<br/>Corrective actions required for all non-compliant entries.</p>
+    </body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
+}
+
+export default function HACCPModule({ restaurantId, locationId, locationName }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<HACCPTab>('log')
 
@@ -225,6 +282,14 @@ export default function HACCPModule({ locationId, locationName }: Props) {
   const [parTemplate,    setParTemplate]    = useState<{ library_id: string; name: string }[]>([])
   const [recvPrintFrom,  setRecvPrintFrom]  = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0] })
   const [recvPrintTo,    setRecvPrintTo]    = useState(() => todayStr())
+
+  // ── Cooking state ─────────────────────────────────────────────
+  const [cookingLogs, setCookingLogs] = useState<CookingLog[]>([])
+  const [recipes,     setRecipes]     = useState<{ id: string; name: string }[]>([])
+  const [cookDraft,   setCookDraft]   = useState<{ item_name: string; recipe_id: string; cook_method: string; target_temp: string; internal_temp: string; cook_time: string; batch_description: string; recorded_by: string; notes: string } | null>(null)
+  const [cookMsg,     setCookMsg]     = useState('')
+  const [cookPrintFrom, setCookPrintFrom] = useState(() => todayStr())
+  const [cookPrintTo,   setCookPrintTo]   = useState(() => todayStr())
 
   const loadEquipment = useCallback(async () => {
     if (!locationId) { setLoading(false); return }
@@ -274,7 +339,87 @@ export default function HACCPModule({ locationId, locationName }: Props) {
     setParTemplate(((libs ?? []) as { id: string; name: string }[]).map(l => ({ library_id: l.id, name: l.name })))
   }, [locationId, supabase])
 
-  useEffect(() => { loadEquipment(); loadRecentLogs(); loadActions(); loadReceiving(); loadTemplate() }, [loadEquipment, loadRecentLogs, loadActions, loadReceiving, loadTemplate])
+  const loadCooking = useCallback(async () => {
+    if (!locationId) return
+    const { data } = await supabase.from('haccp_cooking_logs').select('*')
+      .eq('location_id', locationId).order('recorded_at', { ascending: false }).limit(50)
+    setCookingLogs((data ?? []) as CookingLog[])
+  }, [locationId, supabase])
+
+  const loadRecipes = useCallback(async () => {
+    if (!restaurantId) return
+    const { data } = await supabase.from('recipes').select('id,name').eq('restaurant_id', restaurantId).eq('is_deleted', false).order('name')
+    setRecipes((data ?? []) as { id: string; name: string }[])
+  }, [restaurantId, supabase])
+
+  useEffect(() => { loadEquipment(); loadRecentLogs(); loadActions(); loadReceiving(); loadTemplate(); loadCooking(); loadRecipes() }, [loadEquipment, loadRecentLogs, loadActions, loadReceiving, loadTemplate, loadCooking, loadRecipes])
+
+  // ── Cooking handlers ──────────────────────────────────────────
+  function openCookForm() {
+    setCookMsg('')
+    setCookDraft({ item_name: '', recipe_id: '', cook_method: 'reheating', target_temp: '165', internal_temp: '', cook_time: '', batch_description: '', recorded_by: '', notes: '' })
+  }
+  function setCookMethod(method: string) {
+    const m = COOK_METHODS.find(x => x.value === method)
+    setCookDraft(d => d ? { ...d, cook_method: method, target_temp: m?.target != null ? String(m.target) : '' } : d)
+  }
+  function pickRecipe(recipeId: string) {
+    const r = recipes.find(x => x.id === recipeId)
+    setCookDraft(d => d ? { ...d, recipe_id: recipeId, item_name: r ? r.name : d.item_name } : d)
+  }
+  const cookCompliant = (target: string, internal: string): boolean | null => {
+    const t = parseFloat(target), v = parseFloat(internal)
+    if (isNaN(v)) return null
+    if (isNaN(t)) return true // no target to compare against
+    return v >= t
+  }
+
+  async function saveCook() {
+    if (!cookDraft || !locationId) return
+    if (!cookDraft.item_name.trim()) { alert('Item name is required'); return }
+    if (cookDraft.internal_temp === '' || isNaN(parseFloat(cookDraft.internal_temp))) { alert('Internal temp is required'); return }
+    if (!cookDraft.recorded_by.trim()) { alert('Recorded by is required'); return }
+    setSaving(true)
+    const nowIso = new Date().toISOString()
+    const target = cookDraft.target_temp === '' ? null : parseFloat(cookDraft.target_temp)
+    const internal = parseFloat(cookDraft.internal_temp)
+    const isComp = target != null ? internal >= target : true
+
+    const { data: logRow, error } = await supabase.from('haccp_cooking_logs').insert({
+      location_id: locationId, item_name: cookDraft.item_name.trim(), recipe_id: cookDraft.recipe_id || null,
+      cook_method: cookDraft.cook_method, target_temp: target, internal_temp: internal,
+      cook_time_minutes: cookDraft.cook_time === '' ? null : parseInt(cookDraft.cook_time),
+      batch_description: cookDraft.batch_description || '', recorded_by: cookDraft.recorded_by.trim(),
+      is_compliant: isComp, notes: cookDraft.notes || '', recorded_at: nowIso,
+    }).select().single()
+    if (error || !logRow) { setSaving(false); console.error('[haccp cooking]', error); alert('Failed to save cooking log'); return }
+
+    if (!isComp) {
+      await supabase.from('corrective_actions').insert({
+        location_id: locationId, trigger_type: 'cooking_log', trigger_id: (logRow as { id: string }).id,
+        description: `${cookDraft.item_name.trim()}: internal temp ${internal}°F did not reach target ${target}°F (${COOK_METHOD_LABELS[cookDraft.cook_method] ?? cookDraft.cook_method}). Item held pending re-check.`,
+        discovered_at: nowIso, discovered_by: cookDraft.recorded_by.trim(), action_taken: '', status: 'open',
+      })
+      setCookMsg('')
+      alert('⚠ Non-compliant — corrective action opened.')
+    } else {
+      setCookMsg(`✓ ${cookDraft.item_name.trim()} at ${internal}°F`)
+    }
+
+    setSaving(false)
+    // Keep the form open for rapid multi-batch logging; clear per-entry temp fields.
+    setCookDraft(d => d ? { ...d, internal_temp: '', cook_time: '', batch_description: '', notes: '' } : d)
+    loadCooking(); loadActions()
+  }
+
+  async function doPrintCooking() {
+    if (!locationId) return
+    const { data } = await supabase.from('haccp_cooking_logs').select('*')
+      .eq('location_id', locationId)
+      .gte('recorded_at', `${cookPrintFrom}T00:00:00`).lte('recorded_at', `${cookPrintTo}T23:59:59`)
+      .order('recorded_at', { ascending: true })
+    printCookingLog((data ?? []) as CookingLog[], locationName ?? 'Location', cookPrintFrom, cookPrintTo)
+  }
 
   // ── Receiving handlers ────────────────────────────────────────
   function openDelivery() {
@@ -586,6 +731,21 @@ export default function HACCPModule({ locationId, locationName }: Props) {
             <p className="text-sm text-[--muted]">No location selected.</p>
           ) : (
             <>
+              {/* Daily compliance summary */}
+              {(() => {
+                const today = todayStr()
+                const tempToday = recentLogs.filter(l => dateOf(l.recorded_at) === today).length
+                const openActions = actions.filter(a => a.status === 'open').length
+                const cookToday = cookingLogs.filter(c => dateOf(c.recorded_at) === today).length
+                return (
+                  <div className="mb-5 rounded-xl border border-[--border] bg-[--surface-2] px-4 py-3 space-y-1 text-xs">
+                    <div className="text-[--muted]">{tempToday > 0 ? `✓ Temperature logs today: ${tempToday} recorded` : 'Temperature logs today: none recorded yet'}</div>
+                    <div className={openActions > 0 ? 'text-amber-700' : 'text-[--muted]'}>{openActions > 0 ? `⚠ Open corrective actions: ${openActions}` : '✓ No open corrective actions'}</div>
+                    <div className="text-[--muted]">{cookToday > 0 ? `✓ Cooking logs today: ${cookToday} logged` : 'Cooking logs today: none logged yet'}</div>
+                  </div>
+                )
+              })()}
+
               {/* Slot buttons */}
               <div className="flex gap-3 mb-5">
                 <button onClick={() => openForm('opening')}
@@ -971,11 +1131,104 @@ export default function HACCPModule({ locationId, locationName }: Props) {
 
       {/* ── COOKING/REHEATING TAB ── */}
       {tab === 'cooking' && (
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          <div className="text-center py-16 text-[--muted]">
-            <div className="text-4xl opacity-20 mb-3">🍳</div>
-            <p className="text-sm">Cooking / reheating log coming in the next phase.</p>
-          </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {!locationId ? (
+            <p className="text-sm text-[--muted]">No location selected.</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-[11px] text-[--muted]">Print log:</span>
+                  <input type="date" value={cookPrintFrom} onChange={e => setCookPrintFrom(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                  <span className="text-[11px] text-[--hint]">to</span>
+                  <input type="date" value={cookPrintTo} onChange={e => setCookPrintTo(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                  <button onClick={doPrintCooking} className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">🖨 Print cooking log</button>
+                </div>
+                {!cookDraft && (
+                  <button onClick={openCookForm} className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark]">+ Log cooking temp</button>
+                )}
+              </div>
+
+              {/* Cooking form (stays open for rapid logging) */}
+              {cookDraft && (() => {
+                const comp = cookCompliant(cookDraft.target_temp, cookDraft.internal_temp)
+                return (
+                  <div className="bg-white rounded-xl border border-[--border] p-4 space-y-3">
+                    <h3 className="font-serif text-sm font-medium text-[--text]">Log cooking temp</h3>
+                    {cookMsg && <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">{cookMsg}</div>}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Item name</label>
+                        <input value={cookDraft.item_name} onChange={e => setCookDraft(d => ({ ...d!, item_name: e.target.value, recipe_id: '' }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                      <div><label className="block text-[11px] font-medium text-[--muted] mb-1">…or pick a recipe</label>
+                        <select value={cookDraft.recipe_id} onChange={e => pickRecipe(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full bg-white">
+                          <option value="">— none —</option>
+                          {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        </select></div>
+                      <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Cook method</label>
+                        <select value={cookDraft.cook_method} onChange={e => setCookMethod(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full bg-white">
+                          {COOK_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                        </select></div>
+                      <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Target temp (°F)</label>
+                        <input type="number" step="0.1" value={cookDraft.target_temp} onChange={e => setCookDraft(d => ({ ...d!, target_temp: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-[--muted] mb-1">Internal temp (°F)</label>
+                        <div className="flex items-center gap-2">
+                          <input type="number" step="0.1" value={cookDraft.internal_temp} onChange={e => setCookDraft(d => ({ ...d!, internal_temp: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-24" />
+                          {comp === true && <span className="text-green-600 font-semibold">✓</span>}
+                          {comp === false && <span className="text-red-600 font-semibold">✗</span>}
+                        </div>
+                      </div>
+                      <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Cook time (min)</label>
+                        <input type="number" value={cookDraft.cook_time} onChange={e => setCookDraft(d => ({ ...d!, cook_time: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                      <div className="col-span-2"><label className="block text-[11px] font-medium text-[--muted] mb-1">Batch description</label>
+                        <input value={cookDraft.batch_description} onChange={e => setCookDraft(d => ({ ...d!, batch_description: e.target.value }))} placeholder="2L Besciamella, 4 portions" className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                      <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Recorded by</label>
+                        <input value={cookDraft.recorded_by} onChange={e => setCookDraft(d => ({ ...d!, recorded_by: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                      <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Notes</label>
+                        <input value={cookDraft.notes} onChange={e => setCookDraft(d => ({ ...d!, notes: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={saveCook} disabled={saving} className="px-4 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
+                      <button onClick={() => { setCookDraft(null); setCookMsg('') }} className="px-4 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">Done</button>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Recent logs */}
+              <div>
+                <h2 className="font-serif text-sm font-medium text-[--text] mb-2">Recent cooking logs</h2>
+                {cookingLogs.length === 0 ? (
+                  <p className="text-sm text-[--muted]">No cooking temps logged.</p>
+                ) : (
+                  <div className="bg-white rounded-xl border border-[--border] overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[--border] bg-[--surface-2] text-[10px] uppercase tracking-wide text-[--hint]">
+                          <th className="text-left px-3 py-2">Date/Time</th><th className="text-left px-3 py-2">Item</th>
+                          <th className="text-left px-3 py-2">Method</th><th className="text-left px-3 py-2">Temp</th>
+                          <th className="text-left px-3 py-2">Target</th><th className="text-left px-3 py-2">Compliant</th><th className="text-left px-3 py-2">By</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cookingLogs.map(l => (
+                          <tr key={l.id} className={`border-b border-[--border] last:border-0 ${l.is_compliant ? '' : 'bg-red-50/50'}`}>
+                            <td className="px-3 py-2.5 text-[--muted]">{new Date(l.recorded_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
+                            <td className="px-3 py-2.5 font-medium text-[--text]">{l.item_name}</td>
+                            <td className="px-3 py-2.5 text-[--muted]">{COOK_METHOD_LABELS[l.cook_method] ?? l.cook_method}</td>
+                            <td className="px-3 py-2.5 text-[--muted]">{l.internal_temp}°F</td>
+                            <td className="px-3 py-2.5 text-[--muted]">{l.target_temp != null ? `${l.target_temp}°F` : '—'}</td>
+                            <td className="px-3 py-2.5">{l.is_compliant ? <span className="text-green-600">✓</span> : <span className="text-red-600">✗</span>}</td>
+                            <td className="px-3 py-2.5 text-[--muted]">{l.recorded_by || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
