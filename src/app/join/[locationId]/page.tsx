@@ -36,6 +36,7 @@ export default function JoinPage() {
   const [emailOptIn, setEmailOptIn] = useState(false)
   const [prefLoc,    setPrefLoc]    = useState(locationId)
   const [tosAgreed,  setTosAgreed]  = useState(true)
+  const [marketingOptIn, setMarketingOptIn] = useState(false)  // optional, opt-in (TCPA)
   const [lookingUp,  setLookingUp]  = useState(false)
 
   const phoneRef = useRef<HTMLInputElement>(null)
@@ -160,6 +161,7 @@ export default function JoinPage() {
           birthdayMonth: bdMonth ? parseInt(bdMonth) : null,
           birthdayDay:   bdDay   ? parseInt(bdDay)   : null,
           smsOptIn, emailOptIn,
+          marketing_opt_in: marketingOptIn,
           preferredLocationId: prefLoc || locationId,
           arrivalMode:         arrivalMode ?? 'other',
           estimatedArrivalAt:  computedArrivalTime(),
@@ -185,6 +187,8 @@ export default function JoinPage() {
 
   const accent = info?.restaurant?.branding?.primaryColor ?? '#C05A2A'
   const hasTos = !!(info?.settings?.tos_text || info?.settings?.tos_url)
+  const smsNumber  = process.env.NEXT_PUBLIC_TWILIO_PHONE_NUMBER || '(our SMS number)'
+  const privacyUrl = process.env.NEXT_PUBLIC_PRIVACY_URL || 'https://correttoristoro.com/privacy'
 
   if (loading) return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#F8F5F0' }}>
@@ -531,6 +535,22 @@ export default function JoinPage() {
                 {error}
               </div>
             )}
+
+            {/* ── Marketing opt-in (optional, unchecked by default) ── */}
+            <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer', marginBottom:12 }}>
+              <input type="checkbox" checked={marketingOptIn} onChange={e => setMarketingOptIn(e.target.checked)}
+                style={{ marginTop:3, accentColor:accent, width:16, height:16 }} />
+              <span style={{ fontSize:12, color:'#7A7568', lineHeight:1.5 }}>
+                Yes, send me occasional updates about specials and events at Corretto. Reply STOP to unsubscribe at any time.
+              </span>
+            </label>
+
+            {/* ── Privacy / operational SMS consent (always visible) ── */}
+            <p style={{ fontSize:11, color:'#9A958C', lineHeight:1.6, marginBottom:14, paddingTop:12, borderTop:'1px solid #EFEAE3' }}>
+              By joining the waitlist, you agree to receive a text message about your table. Text FORGET to {smsNumber} to delete your data or STOP to unsubscribe.{' '}
+              Privacy policy:{' '}
+              <a href={privacyUrl} target="_blank" rel="noopener noreferrer" style={{ color:accent, textDecoration:'underline' }}>{privacyUrl}</a>
+            </p>
 
             <button type="submit" disabled={submitting || !firstName.trim() || !phone.trim() || (hasTos && !tosAgreed)}
               className="btn" style={{ background:accent }}>
