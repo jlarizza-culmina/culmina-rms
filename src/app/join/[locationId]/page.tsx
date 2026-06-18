@@ -32,7 +32,6 @@ export default function JoinPage() {
   const [email,      setEmail]      = useState('')
   const [bdMonth,    setBdMonth]    = useState('')
   const [bdDay,      setBdDay]      = useState('')
-  const [smsOptIn,   setSmsOptIn]   = useState(true)
   const [emailOptIn, setEmailOptIn] = useState(false)
   const [prefLoc,    setPrefLoc]    = useState(locationId)
   const [tosAgreed,  setTosAgreed]  = useState(true)
@@ -110,7 +109,7 @@ export default function JoinPage() {
             setEmail(g.email ?? '')
             setBdMonth(g.bdMonth ?? '')
             setBdDay(g.bdDay ?? '')
-            setSmsOptIn(g.smsOptIn ?? true)
+            setMarketingOptIn(g.marketing_opt_in ?? false)
             setEmailOptIn(g.emailOptIn ?? false)
             if (g.phone) setReturning(true)
           } catch {}
@@ -135,7 +134,7 @@ export default function JoinPage() {
         setEmail(guest.email ?? '')
         setBdMonth(guest.birthday_month ? String(guest.birthday_month) : '')
         setBdDay(guest.birthday_day ? String(guest.birthday_day) : '')
-        setSmsOptIn(guest.sms_opt_in ?? true)
+        setMarketingOptIn(!!(guest.marketing_opt_in ?? guest.sms_opt_in))
         setEmailOptIn(guest.email_opt_in ?? false)
         if (guest.preferred_location_id) setPrefLoc(guest.preferred_location_id)
         setReturning(true)
@@ -160,7 +159,7 @@ export default function JoinPage() {
           email: email.trim(),
           birthdayMonth: bdMonth ? parseInt(bdMonth) : null,
           birthdayDay:   bdDay   ? parseInt(bdDay)   : null,
-          smsOptIn, emailOptIn,
+          smsOptIn: marketingOptIn, emailOptIn,
           marketing_opt_in: marketingOptIn,
           preferredLocationId: prefLoc || locationId,
           arrivalMode:         arrivalMode ?? 'other',
@@ -173,7 +172,7 @@ export default function JoinPage() {
       if (info?.restaurant?.id) {
         localStorage.setItem(`culmina_guest_${info.restaurant.id}`, JSON.stringify({
           phone: phone.trim(), firstName: firstName.trim(), lastName: lastName.trim(),
-          email: email.trim(), bdMonth, bdDay, smsOptIn, emailOptIn,
+          email: email.trim(), bdMonth, bdDay, marketing_opt_in: marketingOptIn, emailOptIn,
         }))
       }
       setResult({ position: data.position, total: data.total })
@@ -485,21 +484,11 @@ export default function JoinPage() {
                 </div>
               )}
 
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {[
-                  { checked:smsOptIn, onChange:setSmsOptIn, label:'Text me about specials & events', note:'Msg & data rates may apply. Reply STOP to opt out.' },
-                  { checked:emailOptIn, onChange:setEmailOptIn, label:'Email me about specials & events' },
-                ].map((opt,i) => (
-                  <label key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer' }}>
-                    <input type="checkbox" checked={opt.checked} onChange={e => opt.onChange(e.target.checked)}
-                      style={{ marginTop:2, accentColor:accent, width:16, height:16 }} />
-                    <div>
-                      <div style={{ fontSize:13, color:'#201C18' }}>{opt.label}</div>
-                      {opt.note && <div style={{ fontSize:11, color:'#B0AB9E', marginTop:2 }}>{opt.note}</div>}
-                    </div>
-                  </label>
-                ))}
-              </div>
+              <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer' }}>
+                <input type="checkbox" checked={emailOptIn} onChange={e => setEmailOptIn(e.target.checked)}
+                  style={{ marginTop:2, accentColor:accent, width:16, height:16 }} />
+                <div style={{ fontSize:13, color:'#201C18' }}>Email me about specials &amp; events</div>
+              </label>
             </div>
 
             {/* ── ToS checkbox ── */}
