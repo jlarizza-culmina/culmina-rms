@@ -14,8 +14,9 @@ interface Props {
   locationName?: string
 }
 
-type InvTab = 'dashboard' | 'par' | 'receiving' | 'batches' | 'count'
+type InvTab = 'dashboard' | 'par' | 'receiving' | 'batches' | 'count' | 'adjustments'
 type CountTrack = 'beverage' | 'food' | 'full'
+type AdjFilter = 'all' | 'waste' | 'variance' | 'manual' | 'transfers'
 type Track = 'beverage' | 'food'
 
 interface ParDraft {
@@ -184,6 +185,75 @@ function printCountSheet(
   if (w) { w.document.write(html); w.document.close(); w.print() }
 }
 
+const ADJ_REASONS = ['Waste', 'Spillage', 'Theft', 'Breakage', 'Spoilage', 'Correction', 'Transfer In', 'Transfer Out', 'Other']
+
+interface InventoryAdjustment {
+  id: string
+  location_id: string
+  library_id: string | null
+  item_name: string
+  adjusted_at: string
+  adjusted_by: string
+  qty_change: number
+  unit: string
+  reason: string
+  notes: string
+  source: string
+  count_id: string | null
+}
+interface ManualAdj {
+  library_id: string | null
+  item_name: string
+  unit: string
+  qty_change: string
+  reason: string
+  notes: string
+}
+const blankManual = (): ManualAdj => ({ library_id: null, item_name: '', unit: '', qty_change: '', reason: 'Waste', notes: '' })
+
+const SOURCE_LABELS: Record<string, string> = {
+  manual: 'Manual', variance_report: 'Variance report', receiving: 'Receiving',
+}
+
+function printVarianceReport(
+  rows: Array<{ category: string; name: string; unit: string; theoretical: number | null; counted: number; variance: number; pct: number | null; flagged: boolean }>,
+  locationName: string, track: string, date: string, counted_by: string
+) {
+  const body = rows.map(r => `
+      <tr style="${r.flagged ? 'color:#c0392b' : ''}">
+        <td>${r.category || '—'}</td>
+        <td><strong>${r.name}</strong></td>
+        <td>${r.unit}</td>
+        <td>${r.theoretical ?? '—'}</td>
+        <td>${r.counted}</td>
+        <td>${r.variance > 0 ? '+' : ''}${+r.variance.toFixed(2)}</td>
+        <td>${r.pct === null ? '—' : r.pct.toFixed(1) + '%'}</td>
+        <td>${r.flagged ? '⚠' : ''}</td>
+        <td style="width:120px;border-bottom:1px solid #999">&nbsp;</td>
+      </tr>`).join('')
+  const html = `<!DOCTYPE html><html><head><title>Variance Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; }
+      h2 { font-size: 14px; margin-bottom: 2px; }
+      .meta { font-size: 10px; color: #555; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f0ede8; text-align: left; padding: 4px 6px; font-size: 9px; text-transform: uppercase; border-bottom: 2px solid #ccc; }
+      td { padding: 4px 6px; border-bottom: 1px solid #eee; }
+      .footer { font-size: 9px; color: #999; margin-top: 16px; }
+      @media print { body { margin: 10px; } }
+    </style></head><body>
+    <h2>${track.charAt(0).toUpperCase() + track.slice(1)} Variance Report</h2>
+    <div class="meta">${locationName} · ${date} · ${counted_by}</div>
+    <table>
+      <thead><tr><th>Category</th><th>Item</th><th>Unit</th><th>Theoretical</th><th>Counted</th><th>Variance</th><th>% Var</th><th>Flag</th><th>Action Taken</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    <div class="footer">Variance report · ${locationName} · ${date} · ${counted_by}<br/>Flagged items require investigation or a logged adjustment.</div>
+    </body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
+}
+
 export default function InventoryModule({ locationId, restaurantId, locationName }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<InvTab>('dashboard')
@@ -224,12 +294,23 @@ export default function InventoryModule({ locationId, restaurantId, locationName
   const [countSheetTrack, setCountSheetTrack] = useState<CountTrack>('beverage')
   const [varianceCountId, setVarianceCountId] = useState<string | null>(null)
   const [varianceLines, setVarianceLines] = useState<InventoryCountLine[]>([])
+  const [flaggedLines, setFlaggedLines] = useState<Set<string>>(new Set())
+  const [adjustLineId, setAdjustLineId] = useState<string | null>(null)
+  const [adjustQty, setAdjustQty] = useState('')
+  const [adjustReason, setAdjustReason] = useState('Waste')
+  const [adjustNotes, setAdjustNotes] = useState('')
+  const [adjustedLineIds, setAdjustedLineIds] = useState<Set<string>>(new Set())
+
+  // Adjustments tab
+  const [adjustments, setAdjustments] = useState<InventoryAdjustment[]>([])
+  const [adjFilter, setAdjFilter] = useState<AdjFilter>('all')
+  const [manualAdj, setManualAdj] = useState<ManualAdj>(blankManual())
 
   const load = useCallback(async () => {
     if (!locationId) { setLoading(false); return }
     setLoading(true)
     const since = new Date(Date.now() - 30 * 86400000).toISOString()
-    const [{ data: pars }, { data: levs }, { data: bats }, { data: lib }, { data: recs }, { data: recipeRows }, { data: cnts }] = await Promise.all([
+    const [{ data: pars }, { data: levs }, { data: bats }, { data: lib }, { data: recs }, { data: recipeRows }, { data: cnts }, { data: adjs }] = await Promise.all([
       supabase.from('inventory_par_levels').select('*').eq('location_id', locationId),
       supabase.from('inventory_levels').select('*').eq('location_id', locationId),
       supabase.from('prepared_batches').select('*').eq('location_id', locationId).order('use_by_date', { ascending: true }),
@@ -239,6 +320,7 @@ export default function InventoryModule({ locationId, restaurantId, locationName
         .gte('received_at', since).order('received_at', { ascending: false }),
       supabase.from('recipes').select('id,name').eq('restaurant_id', restaurantId).eq('is_deleted', false).order('name'),
       supabase.from('inventory_counts').select('*').eq('location_id', locationId).order('count_date', { ascending: false }).limit(10),
+      supabase.from('inventory_adjustments').select('*').eq('location_id', locationId).order('adjusted_at', { ascending: false }),
     ])
     setParLevels((pars ?? []) as InventoryParLevel[])
     setLevels((levs ?? []) as InventoryLevel[])
@@ -247,6 +329,7 @@ export default function InventoryModule({ locationId, restaurantId, locationName
     setReceipts((recs ?? []) as InventoryReceipt[])
     setRecipes((recipeRows ?? []) as { id: string; name: string }[])
     setCounts((cnts ?? []) as InventoryCount[])
+    setAdjustments((adjs ?? []) as InventoryAdjustment[])
 
     const recIds = (recs ?? []).map((r: { id: string }) => r.id)
     if (recIds.length) {
@@ -601,7 +684,77 @@ export default function InventoryModule({ locationId, restaurantId, locationName
     const { data } = await supabase.from('inventory_count_lines').select('*').eq('count_id', countId)
     setVarianceLines((data ?? []) as InventoryCountLine[])
     setVarianceCountId(countId)
+    setFlaggedLines(new Set())
+    setAdjustedLineIds(new Set())
+    setAdjustLineId(null)
   }
+
+  function toggleFlag(id: string) {
+    setFlaggedLines(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function openAdjust(ln: InventoryCountLine) {
+    const v = ln.counted_qty - (ln.theoretical_qty ?? 0)
+    setAdjustLineId(ln.id); setAdjustQty(String(+v.toFixed(2))); setAdjustReason('Waste'); setAdjustNotes('')
+  }
+
+  // Apply a qty change to inventory_levels for a library item.
+  async function applyLevelDelta(libraryId: string, delta: number, unit: string) {
+    const par = parLevels.find(p => p.library_id === libraryId)
+    const t: Track = par?.track ?? 'food'
+    const existing = levels.find(l => l.library_id === libraryId && l.track === t)
+    if (existing) {
+      await supabase.from('inventory_levels').update({ on_hand_qty: existing.on_hand_qty + delta, updated_at: new Date().toISOString() }).eq('id', existing.id)
+    } else {
+      await supabase.from('inventory_levels').insert({
+        location_id: locationId, library_id: libraryId, track: t,
+        on_hand_qty: delta, on_hand_unit: unit, last_count_qty: null, last_count_at: null, last_count_by: null,
+      })
+    }
+  }
+
+  async function saveVarianceAdjustment(ln: InventoryCountLine) {
+    if (!locationId) return
+    if (adjustQty === '' || isNaN(parseFloat(adjustQty))) { alert('Enter a quantity change'); return }
+    const qty = parseFloat(adjustQty)
+    const cnt = counts.find(c => c.id === varianceCountId)
+    await supabase.from('inventory_adjustments').insert({
+      location_id: locationId, library_id: ln.library_id, item_name: ln.item_name,
+      adjusted_at: new Date().toISOString(), adjusted_by: cnt?.counted_by ?? '',
+      qty_change: qty, unit: ln.unit, reason: adjustReason, notes: adjustNotes || '',
+      source: 'variance_report', count_id: varianceCountId,
+    })
+    if (ln.library_id) await applyLevelDelta(ln.library_id, qty, ln.unit)
+    setAdjustedLineIds(s => new Set(s).add(ln.id))
+    setAdjustLineId(null); setAdjustQty(''); setAdjustReason('Waste'); setAdjustNotes('')
+    load()
+  }
+
+  async function saveManualAdjustment() {
+    if (!locationId) return
+    if (!manualAdj.item_name.trim()) { alert('Pick an item'); return }
+    if (manualAdj.qty_change === '' || isNaN(parseFloat(manualAdj.qty_change))) { alert('Enter a quantity change'); return }
+    setSaving(true)
+    const qty = parseFloat(manualAdj.qty_change)
+    await supabase.from('inventory_adjustments').insert({
+      location_id: locationId, library_id: manualAdj.library_id, item_name: manualAdj.item_name.trim(),
+      adjusted_at: new Date().toISOString(), adjusted_by: '',
+      qty_change: qty, unit: manualAdj.unit || '', reason: manualAdj.reason, notes: manualAdj.notes || '',
+      source: 'manual', count_id: null,
+    })
+    if (manualAdj.library_id) await applyLevelDelta(manualAdj.library_id, qty, manualAdj.unit)
+    setSaving(false)
+    setManualAdj(blankManual())
+    load()
+  }
+
+  const filteredAdjustments = useMemo(() => adjustments.filter(a => {
+    if (adjFilter === 'all') return true
+    if (adjFilter === 'waste') return ['Waste', 'Spoilage', 'Spillage', 'Breakage'].includes(a.reason)
+    if (adjFilter === 'variance') return a.source === 'variance_report'
+    if (adjFilter === 'manual') return a.source === 'manual'
+    if (adjFilter === 'transfers') return ['Transfer In', 'Transfer Out'].includes(a.reason)
+    return true
+  }), [adjustments, adjFilter])
 
   const fi = 'text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full'
 
@@ -612,7 +765,7 @@ export default function InventoryModule({ locationId, restaurantId, locationName
       <div className="bg-white border-b border-[--border] px-6 py-4 flex-shrink-0">
         <h1 className="font-serif text-xl font-medium text-[--text] mb-3">Inventory{locationName ? ` — ${locationName}` : ''}</h1>
         <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 w-fit">
-          {([['dashboard', '📦 Dashboard'], ['par', '⚖ Par Levels'], ['receiving', '🚚 Receiving'], ['batches', '📋 Batches'], ['count', '📋 Count']] as [InvTab, string][]).map(([t, label]) => (
+          {([['dashboard', '📦 Dashboard'], ['par', '⚖ Par Levels'], ['receiving', '🚚 Receiving'], ['batches', '📋 Batches'], ['count', '📋 Count'], ['adjustments', '🔧 Adjustments']] as [InvTab, string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${tab === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
               {label}
@@ -1076,19 +1229,12 @@ export default function InventoryModule({ locationId, restaurantId, locationName
               </div>
             )}
           </div>
-        ) : (
+        ) : tab === 'count' ? (
           // ── COUNT ──
           <div className="space-y-6">
-            {/* Section 1: start a new count */}
+            {/* Section 1: start / count entry / variance report */}
             <div>
-              <h2 className="font-serif text-sm font-medium text-[--text] mb-2">Start a new count</h2>
-              {!countDraft ? (
-                <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => startCount('beverage')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">🍷 Beverage Count</button>
-                  <button onClick={() => startCount('food')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">🥗 Food Count</button>
-                  <button onClick={() => startCount('full')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">📦 Full Count</button>
-                </div>
-              ) : (
+              {countDraft ? (
                 <div className="bg-white rounded-xl border border-[--border] p-4 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h3 className="font-serif text-sm font-medium text-[--text] capitalize">{countDraft.track} count</h3>
@@ -1141,45 +1287,106 @@ export default function InventoryModule({ locationId, restaurantId, locationName
                       className="px-4 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">Cancel</button>
                   </div>
                 </div>
+              ) : varianceCountId ? (
+                <div className="space-y-3">
+                  {(() => {
+                    const cnt = counts.find(c => c.id === varianceCountId)
+                    const track = cnt?.track ?? 'food'
+                    const threshold = track === 'beverage' ? 10 : 20
+                    let within = 0, flaggedCount = 0
+                    const rows = varianceLines.map(ln => {
+                      const theo = ln.theoretical_qty ?? 0
+                      const v = ln.counted_qty - theo
+                      const pct = theo === 0 ? null : Math.abs((v / theo) * 100)
+                      const level: 'green' | 'amber' | 'red' = pct === null ? 'green' : pct >= threshold * 2 ? 'red' : pct >= threshold ? 'amber' : 'green'
+                      const flagged = level !== 'green' || flaggedLines.has(ln.id)
+                      if (flagged) flaggedCount++; else within++
+                      return { ln, v, pct, level, flagged }
+                    })
+                    const adjustedCount = rows.filter(r => adjustedLineIds.has(r.ln.id)).length
+                    return (
+                      <>
+                        <div className="flex items-start justify-between flex-wrap gap-2">
+                          <div>
+                            <h3 className="font-serif text-sm font-medium text-[--text]">Count complete — Variance Report</h3>
+                            <p className="text-[11px] text-[--muted]">{varianceLines.length} items counted · {track} · {cnt ? fmtDay(cnt.count_date) : ''} · by {cnt?.counted_by ?? ''}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setVarianceCountId(null); setVarianceLines([]); setFlaggedLines(new Set()); setAdjustedLineIds(new Set()) }}
+                              className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">← Back to Count</button>
+                            <button onClick={() => printVarianceReport(rows.map(r => ({ category: library.find(l => l.id === r.ln.library_id)?.category ?? '', name: r.ln.item_name, unit: r.ln.unit, theoretical: r.ln.theoretical_qty, counted: r.ln.counted_qty, variance: r.v, pct: r.pct, flagged: r.flagged })), locationName ?? 'Location', track, cnt ? fmtDay(cnt.count_date) : '', cnt?.counted_by ?? '')}
+                              className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">🖨 Print variance report</button>
+                          </div>
+                        </div>
+                        <div className="bg-white rounded-xl border border-[--border] overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-[--border] bg-[--surface-2] text-[10px] uppercase tracking-wide text-[--hint]">
+                                <th className="text-left px-2 py-2">Category</th><th className="text-left px-2 py-2">Item</th><th className="text-left px-2 py-2">Unit</th>
+                                <th className="text-left px-2 py-2">Theoretical</th><th className="text-left px-2 py-2">Counted</th><th className="text-left px-2 py-2">Variance</th>
+                                <th className="text-left px-2 py-2">% Var</th><th className="text-left px-2 py-2">Flag</th><th className="text-left px-2 py-2">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map(({ ln, v, pct, level, flagged }) => {
+                                const bg = level === 'red' ? 'bg-red-50/60' : level === 'amber' ? 'bg-amber-50/50' : ''
+                                const adjusted = adjustedLineIds.has(ln.id)
+                                return (
+                                  <Fragment key={ln.id}>
+                                    <tr className={`border-b border-[--border] ${bg}`}>
+                                      <td className="px-2 py-2 text-[--muted]">{library.find(l => l.id === ln.library_id)?.category ?? ''}</td>
+                                      <td className="px-2 py-2 font-medium text-[--text]">{ln.item_name}</td>
+                                      <td className="px-2 py-2 text-[--muted]">{ln.unit}</td>
+                                      <td className="px-2 py-2 text-[--muted]">{ln.theoretical_qty ?? '—'}</td>
+                                      <td className="px-2 py-2 text-[--muted]">{ln.counted_qty}</td>
+                                      <td className={`px-2 py-2 font-medium ${v < 0 ? 'text-red-600' : v > 0 ? 'text-[--green]' : 'text-[--muted]'}`}>{v > 0 ? '+' : ''}{+v.toFixed(2)}</td>
+                                      <td className="px-2 py-2 text-[--muted]">{pct === null ? '—' : `${pct.toFixed(1)}%`}</td>
+                                      <td className="px-2 py-2 cursor-pointer select-none" onClick={() => toggleFlag(ln.id)} title="Toggle flag">
+                                        {flaggedLines.has(ln.id) ? '🚩' : level !== 'green' ? '⚠' : <span className="text-[--hint]">·</span>}
+                                      </td>
+                                      <td className="px-2 py-2">
+                                        {flagged && (adjusted
+                                          ? <span className="text-[10px] text-[--green]">✓ Adjusted</span>
+                                          : <button onClick={() => openAdjust(ln)} className="px-2 py-0.5 text-[10px] border border-[--accent] text-[--accent] rounded hover:bg-[--accent-light]">+ Adjust</button>)}
+                                      </td>
+                                    </tr>
+                                    {adjustLineId === ln.id && (
+                                      <tr className="border-b border-[--accent] bg-[--accent-light]/20"><td colSpan={9} className="px-2 py-2">
+                                        <div className="flex items-end gap-2 flex-wrap">
+                                          <div><label className="block text-[10px] text-[--muted] mb-1">Qty change</label>
+                                            <input type="number" step="any" value={adjustQty} onChange={e => setAdjustQty(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-24" /></div>
+                                          <div><label className="block text-[10px] text-[--muted] mb-1">Reason</label>
+                                            <select value={adjustReason} onChange={e => setAdjustReason(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 bg-white outline-none focus:border-[--accent]">
+                                              {ADJ_REASONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                                          <div className="flex-1 min-w-[120px]"><label className="block text-[10px] text-[--muted] mb-1">Notes</label>
+                                            <input value={adjustNotes} onChange={e => setAdjustNotes(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                                          <button onClick={() => saveVarianceAdjustment(ln)} className="px-3 py-1 text-[11px] font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark]">Save adjustment</button>
+                                          <button onClick={() => setAdjustLineId(null)} className="px-3 py-1 text-[11px] border border-[--border-2] text-[--muted] rounded-lg hover:bg-white">Cancel</button>
+                                        </div>
+                                      </td></tr>
+                                    )}
+                                  </Fragment>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="text-[11px] text-[--muted]">{within} items within threshold · {flaggedCount} flagged · {adjustedCount} adjusted</p>
+                      </>
+                    )
+                  })()}
+                </div>
+              ) : (
+                <>
+                  <h2 className="font-serif text-sm font-medium text-[--text] mb-2">Start a new count</h2>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => startCount('beverage')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">🍷 Beverage Count</button>
+                    <button onClick={() => startCount('food')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">🥗 Food Count</button>
+                    <button onClick={() => startCount('full')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">📦 Full Count</button>
+                  </div>
+                </>
               )}
             </div>
-
-            {/* Variance report (basic — enhanced in Phase 2b) */}
-            {varianceCountId && (
-              <div className="bg-white rounded-xl border border-[--border] p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-serif text-sm font-medium text-[--text]">Variance report</h3>
-                  <button onClick={() => { setVarianceCountId(null); setVarianceLines([]) }} className="text-[11px] text-[--hint] hover:text-[--muted]">✕ Close</button>
-                </div>
-                {varianceLines.length === 0 ? (
-                  <p className="text-xs text-[--muted]">No lines recorded.</p>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-[--border] text-[10px] uppercase tracking-wide text-[--hint]">
-                        <th className="text-left px-2 py-1.5">Item</th>
-                        <th className="text-left px-2 py-1.5">Counted</th>
-                        <th className="text-left px-2 py-1.5">Expected</th>
-                        <th className="text-left px-2 py-1.5">Variance</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {varianceLines.map(ln => {
-                        const v = ln.counted_qty - (ln.theoretical_qty ?? 0)
-                        return (
-                          <tr key={ln.id} className="border-b border-[--border] last:border-0">
-                            <td className="px-2 py-1.5 font-medium text-[--text]">{ln.item_name}</td>
-                            <td className="px-2 py-1.5 text-[--muted]">{ln.counted_qty} {ln.unit}</td>
-                            <td className="px-2 py-1.5 text-[--muted]">{ln.theoretical_qty ?? '—'}</td>
-                            <td className={`px-2 py-1.5 font-medium ${v < 0 ? 'text-red-600' : v > 0 ? 'text-[--green]' : 'text-[--muted]'}`}>{v > 0 ? '+' : ''}{+v.toFixed(2)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
 
             {/* Section 2: recent counts */}
             <div>
@@ -1230,6 +1437,77 @@ export default function InventoryModule({ locationId, restaurantId, locationName
                 <button onClick={() => printCountSheet(countItems(countSheetTrack), countSheetTrack, locationName ?? 'Location')}
                   className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">🖨 Print Count Sheet</button>
               </div>
+            </div>
+          </div>
+        ) : (
+          // ── ADJUSTMENTS ──
+          <div className="space-y-5">
+            {/* Manual adjustment form */}
+            <div className="bg-white rounded-xl border border-[--border] p-4 space-y-3">
+              <h3 className="font-serif text-sm font-medium text-[--text]">Log a manual adjustment</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-medium text-[--muted] mb-1">Item</label>
+                  <input value={manualAdj.item_name} list="adj-lib"
+                    onChange={e => {
+                      const m = library.find(l => l.name === e.target.value)
+                      const par = m ? parLevels.find(p => p.library_id === m.id) : undefined
+                      setManualAdj(a => ({ ...a, item_name: e.target.value, library_id: m?.id ?? null, unit: m && !a.unit ? (par?.par_unit ?? m.recipe_unit ?? '') : a.unit }))
+                    }} className={fi} />
+                  <datalist id="adj-lib">{library.map(l => <option key={l.id} value={l.name} />)}</datalist>
+                </div>
+                <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Qty change (+/-)</label>
+                  <input type="number" step="any" value={manualAdj.qty_change} onChange={e => setManualAdj(a => ({ ...a, qty_change: e.target.value }))} className={fi} /></div>
+                <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Unit</label>
+                  <input value={manualAdj.unit} onChange={e => setManualAdj(a => ({ ...a, unit: e.target.value }))} className={fi} /></div>
+                <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Reason</label>
+                  <select value={manualAdj.reason} onChange={e => setManualAdj(a => ({ ...a, reason: e.target.value }))} className={`${fi} bg-white`}>
+                    {ADJ_REASONS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Notes</label>
+                  <input value={manualAdj.notes} onChange={e => setManualAdj(a => ({ ...a, notes: e.target.value }))} className={fi} /></div>
+              </div>
+              <button onClick={saveManualAdjustment} disabled={saving}
+                className="px-4 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
+            </div>
+
+            {/* History */}
+            <div>
+              <div className="flex gap-1 flex-wrap mb-2">
+                {([['all', 'All'], ['waste', 'Waste/Spoilage'], ['variance', 'Variance'], ['manual', 'Manual'], ['transfers', 'Transfers']] as [AdjFilter, string][]).map(([f, label]) => (
+                  <button key={f} onClick={() => setAdjFilter(f)}
+                    className={`text-[11px] px-3 py-1 rounded-full border transition-colors ${adjFilter === f ? 'bg-[--accent] text-white border-[--accent]' : 'border-[--border-2] text-[--muted] hover:bg-[--surface-2]'}`}>{label}</button>
+                ))}
+              </div>
+              {filteredAdjustments.length === 0 ? (
+                <p className="text-sm text-[--muted]">No adjustments.</p>
+              ) : (
+                <div className="bg-white rounded-xl border border-[--border] overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[--border] bg-[--surface-2] text-[10px] uppercase tracking-wide text-[--hint]">
+                        <th className="text-left px-3 py-2">Date</th><th className="text-left px-3 py-2">Item</th><th className="text-left px-3 py-2">Qty Change</th>
+                        <th className="text-left px-3 py-2">Unit</th><th className="text-left px-3 py-2">Reason</th><th className="text-left px-3 py-2">Source</th>
+                        <th className="text-left px-3 py-2">Noted By</th><th className="text-left px-3 py-2">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAdjustments.map(a => (
+                        <tr key={a.id} className="border-b border-[--border] last:border-0">
+                          <td className="px-3 py-2.5 text-[--muted]">{fmtDate(a.adjusted_at)}</td>
+                          <td className="px-3 py-2.5 font-medium text-[--text]">{a.item_name}</td>
+                          <td className={`px-3 py-2.5 font-medium ${a.qty_change < 0 ? 'text-red-600' : 'text-[--green]'}`}>{a.qty_change > 0 ? '+' : ''}{a.qty_change} {a.unit}</td>
+                          <td className="px-3 py-2.5 text-[--muted]">{a.unit}</td>
+                          <td className="px-3 py-2.5 text-[--muted]">{a.reason}</td>
+                          <td className="px-3 py-2.5 text-[--muted]">{SOURCE_LABELS[a.source] ?? a.source}</td>
+                          <td className="px-3 py-2.5 text-[--muted]">{a.adjusted_by || '—'}</td>
+                          <td className="px-3 py-2.5 text-[--muted]">{a.notes}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="text-[10px] text-[--hint] mt-2">Adjustments are permanent records — contact admin to reverse.</p>
             </div>
           </div>
         )}
