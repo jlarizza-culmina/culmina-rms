@@ -3,14 +3,20 @@
 // Gap 7 staff management: staff_members + roles + staff_location_roles.
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
-import type { Role, StaffMember, StaffLocationRole } from '@/lib/types'
+import type { Role, StaffMember, StaffLocationRole, SkillDefinition, SkillLevel, StaffSkill } from '@/lib/types'
 
 interface Props {
   restaurantId: string
   locationId: string
+  currentStaffId?: string
 }
 
 type StatusFilter = 'active' | 'inactive' | 'all'
+type EditTab = 'profile' | 'access' | 'skills' | 'certifications'
+
+const CAT_LABELS: Record<string, string> = { boh: 'BOH', bar: 'Bar', foh: 'FOH', management: 'Management', general: 'General' }
+const LEVEL_DOT: Record<string, string> = { learning: '#9CA3AF', competent: '#2563EB', proficient: '#16A34A', expert: '#D97706' }
+function levelDot(name: string): string { return LEVEL_DOT[name.toLowerCase()] ?? '#9CA3AF' }
 
 const EMPLOYMENT_OPTIONS: { value: NonNullable<StaffMember['employment_type']>; label: string }[] = [
   { value: 'full_time',  label: 'Full-time' },
@@ -36,7 +42,7 @@ const blankStaff = (): Partial<StaffMember> => ({
   notes: '', pin: '',
 })
 
-export default function StaffModule({ restaurantId, locationId }: Props) {
+export default function StaffModule({ restaurantId, locationId, currentStaffId }: Props) {
   const supabase = createClient()
   const [staff,       setStaff]       = useState<StaffMember[]>([])
   const [roles,       setRoles]       = useState<Role[]>([])
@@ -49,6 +55,14 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
   const [draft,        setDraft]        = useState<Partial<StaffMember> | null>(null)
   const [saving,       setSaving]       = useState(false)
   const [error,        setError]        = useState('')
+  const [editTab,      setEditTab]      = useState<EditTab>('profile')
+
+  // Skills tab
+  const [skillDefs,   setSkillDefs]   = useState<SkillDefinition[]>([])
+  const [skillLevels, setSkillLevels] = useState<SkillLevel[]>([])
+  const [staffSkills, setStaffSkills] = useState<StaffSkill[]>([])
+  const [showInactiveSkills, setShowInactiveSkills] = useState(false)
+  const [skillDraft, setSkillDraft] = useState<{ id?: string; skill_id: string; level_id: string; achieved_date: string; notes: string } | null>(null)
 
   // Inline role-assignment form
   const [asnDraft, setAsnDraft] = useState<{ location_id: string; role_id: string; is_primary_location: boolean; effective_from: string; effective_until: string } | null>(null)
@@ -56,15 +70,19 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
   const load = useCallback(async () => {
     if (!restaurantId) { setLoading(false); return }
     setLoading(true)
-    const [{ data: staffData }, { data: roleData }, { data: locData }] = await Promise.all([
+    const [{ data: staffData }, { data: roleData }, { data: locData }, { data: defs }, { data: lvls }] = await Promise.all([
       supabase.from('staff_members').select('*').eq('restaurant_id', restaurantId).order('name'),
       supabase.from('roles').select('*').or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`).order('name'),
       supabase.from('locations').select('id,name').eq('restaurant_id', restaurantId).order('name'),
+      supabase.from('skill_definitions').select('*').or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`).eq('is_active', true).order('category').order('sort_order'),
+      supabase.from('skill_levels').select('*').is('skill_id', null).order('value'),
     ])
     const staffRows = (staffData ?? []) as StaffMember[]
     setStaff(staffRows)
     setRoles((roleData ?? []) as Role[])
     setLocations((locData ?? []) as { id: string; name: string }[])
+    setSkillDefs((defs ?? []) as SkillDefinition[])
+    setSkillLevels((lvls ?? []) as SkillLevel[])
 
     const staffIds = staffRows.map(s => s.id)
     if (staffIds.length) {
@@ -77,6 +95,40 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
   }, [restaurantId, supabase])
 
   useEffect(() => { load() }, [load])
+
+  const loadSkills = useCallback(async (staffId: string) => {
+    let q = supabase.from('staff_skills').select('*').eq('staff_id', staffId)
+    if (!showInactiveSkills) q = q.eq('is_active', true)
+    const { data } = await q
+    setStaffSkills((data ?? []) as StaffSkill[])
+  }, [supabase, showInactiveSkills])
+
+  useEffect(() => {
+    if (draft?.id) loadSkills(draft.id)
+    else setStaffSkills([])
+  }, [draft?.id, loadSkills])
+
+  function openAddSkill() { setSkillDraft({ skill_id: '', level_id: '', achieved_date: todayStr(), notes: '' }) }
+  function openEditSkill(ss: StaffSkill) {
+    setSkillDraft({ id: ss.id, skill_id: ss.skill_id, level_id: ss.level_id, achieved_date: ss.achieved_date ?? todayStr(), notes: ss.notes ?? '' })
+  }
+  async function saveSkill() {
+    if (!draft?.id || !skillDraft) return
+    if (!skillDraft.skill_id || !skillDraft.level_id) { alert('Pick a skill and a level'); return }
+    const verified_by = currentStaffId ?? null
+    const verified_at = currentStaffId ? new Date().toISOString() : null
+    // Editing an existing skill means a level change — retire the old row to preserve history.
+    if (skillDraft.id) {
+      await supabase.from('staff_skills').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', skillDraft.id)
+    }
+    await supabase.from('staff_skills').insert({
+      staff_id: draft.id, skill_id: skillDraft.skill_id, level_id: skillDraft.level_id,
+      achieved_date: skillDraft.achieved_date || null, notes: skillDraft.notes || '',
+      is_active: true, verified_by, verified_at,
+    })
+    setSkillDraft(null)
+    loadSkills(draft.id)
+  }
 
   function roleNames(staffId: string): string {
     const names = assignments
@@ -173,7 +225,7 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name…"
             className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-44" />
           {!draft && (
-            <button onClick={() => { setError(''); setDraft(blankStaff()) }}
+            <button onClick={() => { setError(''); setEditTab('profile'); setSkillDraft(null); setDraft(blankStaff()) }}
               className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] whitespace-nowrap">
               + Add Staff Member
             </button>
@@ -209,7 +261,7 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
                   </td>
                   <td className="px-3 py-2.5 text-[--muted]">{roleNames(s.id)}</td>
                   <td className="px-3 py-2.5">
-                    <button onClick={() => { setError(''); setAsnDraft(null); setDraft({ ...s }) }}
+                    <button onClick={() => { setError(''); setAsnDraft(null); setSkillDraft(null); setEditTab('profile'); setDraft({ ...s }) }}
                       className="px-2 py-0.5 text-[10px] border border-[--border-2] rounded text-[--muted] hover:text-[--text]">Edit</button>
                   </td>
                 </tr>
@@ -224,6 +276,16 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
         <div className="bg-white rounded-xl border border-[--border] p-4 space-y-3">
           <h3 className="font-serif text-sm font-medium text-[--text]">{draft.id ? `Edit: ${draft.name}` : 'Add Staff Member'}</h3>
 
+          {draft.id && (
+            <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 w-fit">
+              {([['profile', '👤 Profile'], ['access', '🔑 Access'], ['skills', '⭐ Skills'], ['certifications', '📜 Certifications']] as [EditTab, string][]).map(([t, label]) => (
+                <button key={t} onClick={() => setEditTab(t)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${editTab === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>{label}</button>
+              ))}
+            </div>
+          )}
+
+          {(!draft.id || editTab === 'profile') && (
           <div className="grid grid-cols-2 gap-3">
             <Labeled label="Name *">
               <input value={draft.name ?? ''} onChange={e => setDraft(p => ({ ...p!, name: e.target.value }))} className="fi w-full" autoFocus />
@@ -268,10 +330,11 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
               <textarea rows={2} value={draft.notes ?? ''} onChange={e => setDraft(p => ({ ...p!, notes: e.target.value }))} className="fi w-full resize-none" />
             </Labeled>
           </div>
+          )}
 
-          {/* PIN section (editing only) */}
-          {draft.id && (
-            <div className="flex items-center gap-3 border-t border-[--border] pt-3">
+          {/* ── Access tab: PIN ── */}
+          {draft.id && editTab === 'access' && (
+            <div className="flex items-center gap-3">
               <span className="text-[11px] text-[--muted]">PIN: {draft.pin ? '••••' : 'not set'}</span>
               <button onClick={setPin}
                 className="px-3 py-1 text-[11px] border border-[--border-2] rounded-lg text-[--muted] hover:bg-[--surface-2]">
@@ -280,21 +343,119 @@ export default function StaffModule({ restaurantId, locationId }: Props) {
             </div>
           )}
 
-          {error && <p className="text-[11px] text-red-500">{error}</p>}
+          {/* ── Skills tab ── */}
+          {draft.id && editTab === 'skills' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[--hint]">Skills</h4>
+                {!skillDraft && <button onClick={openAddSkill} className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium">+ Add skill</button>}
+              </div>
+              {staffSkills.length === 0 ? (
+                <p className="text-xs text-[--muted]">No skills recorded.</p>
+              ) : (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wide text-[--hint] border-b border-[--border]">
+                      <th className="text-left py-1.5">Skill</th><th className="text-left py-1.5">Category</th>
+                      <th className="text-left py-1.5">Level</th><th className="text-left py-1.5">Achieved</th>
+                      <th className="text-left py-1.5">Verified by</th><th className="text-left py-1.5">Notes</th><th className="text-left py-1.5"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {staffSkills.map(ss => {
+                      const def = skillDefs.find(d => d.id === ss.skill_id)
+                      const lvl = skillLevels.find(l => l.id === ss.level_id)
+                      const inactive = !ss.is_active
+                      return (
+                        <tr key={ss.id} className={`border-b border-[--border] last:border-0 ${inactive ? 'opacity-50' : ''}`}>
+                          <td className={`py-1.5 font-medium text-[--text] ${inactive ? 'line-through' : ''}`}>{def?.name ?? '—'}</td>
+                          <td className="py-1.5 text-[--muted]">{def ? CAT_LABELS[def.category] : '—'}</td>
+                          <td className="py-1.5">
+                            <span className="inline-flex items-center gap-1.5 text-[--muted]">
+                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: levelDot(lvl?.name ?? '') }} />
+                              {lvl?.name ?? '—'}{inactive && <span className="ml-1 text-[9px] text-[--hint]">(Previous level)</span>}
+                            </span>
+                          </td>
+                          <td className="py-1.5 text-[--muted]">{ss.achieved_date ?? '—'}</td>
+                          <td className="py-1.5 text-[--muted]">{ss.verified_by ? (staff.find(s => s.id === ss.verified_by)?.name ?? '—') : '—'}</td>
+                          <td className="py-1.5 text-[--muted]">{ss.notes}</td>
+                          <td className="py-1.5">
+                            {ss.is_active && <button onClick={() => openEditSkill(ss)} className="px-2 py-0.5 text-[10px] border border-[--border-2] rounded text-[--muted] hover:text-[--text]">Edit</button>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
 
-          <div className="flex gap-2">
-            <button onClick={saveStaff} disabled={saving}
-              className="px-4 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button onClick={() => { setDraft(null); setAsnDraft(null); setError('') }}
-              className="px-4 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">
-              Cancel
-            </button>
-          </div>
+              <label className="flex items-center gap-1.5 text-[11px] text-[--muted] cursor-pointer select-none">
+                <input type="checkbox" checked={showInactiveSkills} onChange={e => setShowInactiveSkills(e.target.checked)} className="accent-[--accent]" />
+                Show inactive skills
+              </label>
 
-          {/* Role assignments (editing only) */}
-          {draft.id && (
+              {skillDraft && (
+                <div className="bg-[--surface-2] rounded-lg p-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Labeled label="Skill">
+                      {skillDraft.id ? (
+                        <div className="fi w-full bg-white text-[--muted]">{skillDefs.find(d => d.id === skillDraft.skill_id)?.name ?? '—'}</div>
+                      ) : (
+                        <select value={skillDraft.skill_id} onChange={e => setSkillDraft(d => ({ ...d!, skill_id: e.target.value }))} className="fi w-full bg-white">
+                          <option value="">— select —</option>
+                          {(['boh', 'foh', 'bar', 'management', 'general'] as SkillDefinition['category'][]).map(cat => {
+                            const opts = skillDefs.filter(d => d.category === cat && !staffSkills.some(ss => ss.is_active && ss.skill_id === d.id))
+                            if (!opts.length) return null
+                            return <optgroup key={cat} label={CAT_LABELS[cat]}>{opts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>
+                          })}
+                        </select>
+                      )}
+                    </Labeled>
+                    <Labeled label="Level">
+                      <select value={skillDraft.level_id} onChange={e => setSkillDraft(d => ({ ...d!, level_id: e.target.value }))} className="fi w-full bg-white">
+                        <option value="">— select —</option>
+                        {skillLevels.map(l => <option key={l.id} value={l.id}>{l.value} — {l.name}</option>)}
+                      </select>
+                    </Labeled>
+                    <Labeled label="Achieved date">
+                      <input type="date" value={skillDraft.achieved_date} onChange={e => setSkillDraft(d => ({ ...d!, achieved_date: e.target.value }))} className="fi w-full" />
+                    </Labeled>
+                    <Labeled label="Notes">
+                      <input value={skillDraft.notes} onChange={e => setSkillDraft(d => ({ ...d!, notes: e.target.value }))} className="fi w-full" />
+                    </Labeled>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveSkill} className="px-3 py-1 text-[11px] font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark]">Save</button>
+                    <button onClick={() => setSkillDraft(null)} className="px-3 py-1 text-[11px] border border-[--border-2] text-[--muted] rounded-lg hover:bg-white">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Certifications tab (Gap 7 Phase 2b) ── */}
+          {draft.id && editTab === 'certifications' && (
+            <p className="text-xs text-[--muted]">Certifications management coming in a later phase.</p>
+          )}
+
+          {(!draft.id || editTab === 'profile' || editTab === 'access') && (
+            <>
+              {error && <p className="text-[11px] text-red-500">{error}</p>}
+              <div className="flex gap-2">
+                <button onClick={saveStaff} disabled={saving}
+                  className="px-4 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button onClick={() => { setDraft(null); setAsnDraft(null); setError('') }}
+                  className="px-4 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Role assignments (Access tab) */}
+          {draft.id && editTab === 'access' && (
             <div className="border-t border-[--border] pt-3">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[--hint]">Role assignments</h4>

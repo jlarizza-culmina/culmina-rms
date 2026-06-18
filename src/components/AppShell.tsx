@@ -300,6 +300,7 @@ export default function AppShell({ user }: Props) {
           <SettingsPage
             ctx={ctx}
             userId={user.id}
+            currentStaffId={staffMember?.id}
             onRestaurantUpdate={r => setRestaurant(r)}
             onLocationsUpdate={l => setLocations(l)}
           />
@@ -372,7 +373,7 @@ export default function AppShell({ user }: Props) {
         <BrandStyle />
         <TopBar />
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          <StaffModule restaurantId={restaurant.id} locationId={locations[0]?.id ?? ''} />
+          <StaffModule restaurantId={restaurant.id} locationId={locations[0]?.id ?? ''} currentStaffId={staffMember?.id} />
         </div>
       </div>
     )

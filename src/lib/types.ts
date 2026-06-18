@@ -424,6 +424,40 @@ export interface StaffMemberWithRoles extends StaffMember {
   staff_location_roles?: StaffLocationRoleWithRole[]
 }
 
+export interface SkillDefinition {
+  id:            string
+  restaurant_id: string | null
+  name:          string
+  category:      'foh' | 'boh' | 'bar' | 'management' | 'general'
+  description:   string
+  is_active:     boolean
+  sort_order:    number
+  created_at:    string
+}
+
+export interface SkillLevel {
+  id:          string
+  skill_id:    string | null
+  name:        string
+  value:       number
+  description: string
+  created_at:  string
+}
+
+export interface StaffSkill {
+  id:            string
+  staff_id:      string
+  skill_id:      string
+  level_id:      string
+  achieved_date: string | null
+  notes:         string
+  verified_by:   string | null
+  verified_at:   string | null
+  is_active:     boolean
+  created_at:    string
+  updated_at:    string
+}
+
 export interface InventoryParLevel {
   id:                 string
   location_id:        string

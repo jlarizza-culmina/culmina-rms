@@ -16,6 +16,7 @@ import StaffModule from './StaffModule'
 interface Props {
   ctx: AppContext
   userId: string
+  currentStaffId?: string
   onRestaurantUpdate: (r: Restaurant) => void
   onLocationsUpdate: (l: Location[]) => void
 }
@@ -62,7 +63,7 @@ function darkenHex(hex: string, pct = 15): string {
   return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('')
 }
 
-export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocationsUpdate }: Props) {
+export default function SettingsPage({ ctx, userId, currentStaffId, onRestaurantUpdate, onLocationsUpdate }: Props) {
   const supabase = createClient()
   const [tab,    setTab]    = useState<SettingsTab>('general')
   const [saving, setSaving] = useState(false)
@@ -675,6 +676,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
           <StaffModule
             restaurantId={ctx.restaurant.id}
             locationId={ctx.locations?.[0]?.id ?? ''}
+            currentStaffId={currentStaffId}
           />
         )}
 
