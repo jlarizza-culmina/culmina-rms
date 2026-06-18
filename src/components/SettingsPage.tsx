@@ -10,6 +10,7 @@ import HACCPEquipmentSettings from './HACCPEquipmentSettings'
 import DaypartSettings from './DaypartSettings'
 import OperatingHoursSettings from './OperatingHoursSettings'
 import LocationCalendarSettings from './LocationCalendarSettings'
+import CoverForecastSettings from './CoverForecastSettings'
 import StaffModule from './StaffModule'
 
 interface Props {
@@ -19,7 +20,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts' | 'operating_hours' | 'calendar'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts' | 'operating_hours' | 'calendar' | 'cover_forecast'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -242,6 +243,7 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
     { key: 'dayparts',     label: '⏱ Dayparts' },
     { key: 'operating_hours', label: '🕐 Hours' },
     { key: 'calendar',     label: '📅 Calendar' },
+    { key: 'cover_forecast', label: '📈 Cover Forecast' },
     { key: 'haccp_equipment', label: '🌡 HACCP Equipment' },
     { key: 'queue',          label: 'Queue' },
     { key: 'library_import', label: '✨ AI Library Import' },
@@ -695,6 +697,14 @@ export default function SettingsPage({ ctx, userId, onRestaurantUpdate, onLocati
         {/* ── Calendar tab ── */}
         {tab === 'calendar' && (
           <LocationCalendarSettings
+            locationId={ctx.locations?.[0]?.id}
+            locationName={ctx.locations?.[0]?.name}
+          />
+        )}
+
+        {/* ── Cover Forecast tab ── */}
+        {tab === 'cover_forecast' && (
+          <CoverForecastSettings
             locationId={ctx.locations?.[0]?.id}
             locationName={ctx.locations?.[0]?.name}
           />
