@@ -7,7 +7,7 @@ export type DishMode        = 'single' | 'composed'
 export type UserRole        = 'super_admin' | 'admin' | 'chef' | 'manager' | 'foh'
 export type MenuItemStatus  = 'not_on_menu' | 'orderable' | 'on_menu' | 'special'
 export type RecipeStage     = 'development' | 'testing' | 'active' | 'specials_candidate' | 'retired'
-export type AppModule       = 'home' | 'recipes' | 'menus' | 'library' | 'production' | 'schedule' | 'analytics' | 'settings' | 'superadmin' | 'queue' | 'staff' | 'haccp'
+export type AppModule       = 'home' | 'recipes' | 'menus' | 'library' | 'production' | 'schedule' | 'analytics' | 'settings' | 'superadmin' | 'queue' | 'staff' | 'haccp' | 'inventory'
 
 // ── Multi-tenant types ────────────────────────────────────────
 export interface AppUser {
@@ -422,6 +422,97 @@ export interface StaffLocationRoleWithRole extends StaffLocationRole {
 }
 export interface StaffMemberWithRoles extends StaffMember {
   staff_location_roles?: StaffLocationRoleWithRole[]
+}
+
+export interface InventoryParLevel {
+  id:                 string
+  location_id:        string
+  library_id:         string
+  track:              'beverage' | 'food'
+  par_qty:            number
+  par_unit:           string
+  reorder_qty:        number | null
+  reorder_threshold:  number | null
+  supplier_name?:     string
+  notes:              string
+  created_at:         string
+  updated_at:         string
+}
+
+export interface InventoryLevel {
+  id:             string
+  location_id:    string
+  library_id:     string
+  track:          'beverage' | 'food'
+  on_hand_qty:    number
+  on_hand_unit:   string
+  last_count_qty: number | null
+  last_count_at:  string | null
+  last_count_by:  string | null
+  updated_at:     string
+}
+
+export interface PreparedBatch {
+  id:                  string
+  location_id:         string
+  recipe_id:           string | null
+  batch_name:          string
+  batch_qty:           number
+  batch_unit:          string
+  current_qty:         number
+  current_unit:        string
+  prep_date:           string
+  use_by_date:         string
+  prep_by:             string
+  storage_location:    string
+  is_contract_kitchen: boolean
+  contract_batch_id:   string
+  status:              'active' | 'partially_used' | 'depleted' |
+                       'discarded' | 'expired'
+  discarded_at:        string | null
+  discarded_by:        string
+  discard_reason:      string
+  discard_value:       number | null
+  notes:               string
+  created_at:          string
+  updated_at:          string
+}
+
+export interface PreparedBatchDepletion {
+  id:            string
+  batch_id:      string
+  depleted_at:   string
+  depleted_qty:  number
+  depleted_unit: string
+  source:        'production_plan' | 'service_use' |
+                 'mise_en_place' | 'waste' | 'manual'
+  source_ref:    string
+  depleted_by:   string
+  notes:         string
+  created_at:    string
+}
+
+export interface InventoryReceipt {
+  id:            string
+  location_id:   string
+  received_at:   string
+  received_by:   string
+  supplier_name: string
+  invoice_ref:   string
+  notes:         string
+  created_at:    string
+}
+
+export interface InventoryReceiptLine {
+  id:           string
+  receipt_id:   string
+  library_id:   string | null
+  item_name:    string
+  ordered_qty:  number | null
+  received_qty: number
+  unit:         string
+  unit_cost:    number | null
+  notes:        string
 }
 
 export interface HACCPEquipment {

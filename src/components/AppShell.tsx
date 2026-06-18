@@ -11,6 +11,7 @@ import ProductionModule from './ProductionModule'
 import StaffModule from './StaffModule'
 import AnalyticsModule from './AnalyticsModule'
 import HACCPModule from './HACCPModule'
+import InventoryModule from './InventoryModule'
 import WaitlistModule from './WaitlistModule'
 import MenuModule from './MenuModule'
 import SettingsPage from './SettingsPage'
@@ -426,6 +427,23 @@ export default function AppShell({ user }: Props) {
         <TopBar />
         <div className="flex-1 overflow-hidden flex flex-col">
           <AnalyticsModule userId={user.id} restaurantId={restaurant.id} locationId={locations[0]?.id} />
+        </div>
+      </div>
+    )
+  }
+
+  // ── Inventory ──────────────────────────────────────────────
+  if (module === 'inventory') {
+    return (
+      <div className="h-screen flex flex-col overflow-hidden">
+        <BrandStyle />
+        <TopBar />
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <InventoryModule
+            locationId={locations[0]?.id}
+            restaurantId={restaurant.id}
+            locationName={locations[0]?.name}
+          />
         </div>
       </div>
     )

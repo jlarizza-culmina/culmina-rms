@@ -73,6 +73,13 @@ const MODULES: ModuleCard[] = [
     color: '#2E6B25',
   },
   {
+    module: 'inventory',
+    icon: '📦',
+    label: 'Inventory',
+    description: 'Par levels, receiving & batches',
+    color: '#8B6914',
+  },
+  {
     module: 'settings',
     icon: '⚙️',
     label: 'Settings',
