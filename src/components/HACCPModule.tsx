@@ -37,8 +37,9 @@ interface ReceivingLine {
   item_name: string
   temp_checked: boolean
   temp_value: number | null
+  temp_unit: string
   critical_limit: number | null
-  compliant: boolean | null
+  is_compliant: boolean | null
   accepted: boolean
   rejection_reason: string
   batch_id: string
@@ -181,13 +182,13 @@ function printReceivingLog(
   const fmt = (d: string) => new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const typeLabel = (t: string) => t === 'contract_kitchen' ? 'Contract Kitchen' : 'Standard'
   const rows = logs.flatMap(log => (linesByLog[log.id] ?? []).map(ln => {
-    const bad = ln.compliant === false || !ln.accepted
+    const bad = ln.is_compliant === false || !ln.accepted
     return `<tr style="${bad ? 'color:#c0392b' : ''}">
       <td>${fmt(log.received_at)}</td><td>${log.supplier_name || '—'}</td><td>${typeLabel(log.delivery_type)}</td>
       <td${!ln.accepted ? ' style="text-decoration:line-through"' : ''}>${ln.item_name}</td>
       <td>${ln.temp_checked && ln.temp_value != null ? `${ln.temp_value}°F` : '—'}</td>
       <td>${ln.critical_limit != null ? `${ln.critical_limit}°F` : '—'}</td>
-      <td>${ln.compliant === false ? '✗' : '✓'}</td>
+      <td>${ln.is_compliant === false ? '✗' : '✓'}</td>
       <td>${ln.accepted ? 'Yes' : 'No'}</td>
       <td>${ln.batch_id || '—'}</td>
       <td>${ln.notes || ''}</td>
@@ -455,7 +456,7 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
         temp_checked: l.temp_checked,
         temp_value: l.temp_checked && l.temp_value !== '' ? parseFloat(l.temp_value) : null,
         critical_limit: l.critical_limit !== '' ? parseFloat(l.critical_limit) : null,
-        compliant: comp, accepted: l.accepted, rejection_reason: l.rejection_reason || '',
+        temp_unit: 'F', is_compliant: comp, accepted: l.accepted, rejection_reason: l.rejection_reason || '',
         batch_id: l.batch_id || '', expiry_date: l.expiry_date || null, notes: l.notes || '',
       }
     }))
@@ -1098,13 +1099,13 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
                                       </tr></thead>
                                       <tbody>
                                         {lines.map(ln => {
-                                          const bad = ln.compliant === false
+                                          const bad = ln.is_compliant === false
                                           return (
                                             <tr key={ln.id} className={bad ? 'bg-red-50/60' : ''}>
                                               <td className={`py-1 pr-3 ${!ln.accepted ? 'line-through text-[--hint]' : 'text-[--text]'}`}>{ln.item_name}</td>
                                               <td className="py-1 pr-3 text-[--muted]">{ln.temp_checked && ln.temp_value != null ? `${ln.temp_value}°F` : '—'}</td>
                                               <td className="py-1 pr-3 text-[--muted]">{ln.critical_limit != null ? `${ln.critical_limit}°F` : '—'}</td>
-                                              <td className="py-1 pr-3">{ln.compliant === false ? <span className="text-red-600">✗</span> : <span className="text-green-600">✓</span>}</td>
+                                              <td className="py-1 pr-3">{ln.is_compliant === false ? <span className="text-red-600">✗</span> : <span className="text-green-600">✓</span>}</td>
                                               <td className="py-1 pr-3 text-[--muted]">{ln.accepted ? 'Yes' : `No${ln.rejection_reason ? ` — ${ln.rejection_reason}` : ''}`}</td>
                                               <td className="py-1 pr-3 text-[--muted]">{ln.batch_id || '—'}</td>
                                               <td className="py-1 pr-3 text-[--muted]">{ln.notes}</td>
