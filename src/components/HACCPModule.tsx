@@ -12,14 +12,75 @@ interface Props {
   locationName?: string
 }
 
-type HACCPTab = 'log' | 'corrective'
+type HACCPTab = 'log' | 'corrective' | 'receiving' | 'cooking'
 type LogSlot  = 'opening' | 'closing'
 type StatusFilter = 'all' | 'open' | 'resolved'
+type DeliveryType = 'standard' | 'contract_kitchen'
 
 const SLOT_LABELS: Record<LogSlot, string> = { opening: 'Opening', closing: 'Closing' }
 
+interface ReceivingLog {
+  id: string
+  location_id: string
+  supplier_name: string
+  delivery_type: DeliveryType
+  received_at: string
+  received_by: string
+  notes: string
+  overall_compliant: boolean | null
+  created_at: string
+}
+interface ReceivingLine {
+  id?: string
+  receiving_log_id: string
+  library_id: string | null
+  item_name: string
+  temp_checked: boolean
+  temp_value: number | null
+  critical_limit: number | null
+  compliant: boolean | null
+  accepted: boolean
+  rejection_reason: string
+  batch_id: string
+  expiry_date: string | null
+  notes: string
+}
+interface DeliveryLine {
+  item_name: string
+  library_id: string | null
+  temp_checked: boolean
+  temp_value: string
+  critical_limit: string
+  accepted: boolean
+  rejection_reason: string
+  batch_id: string
+  expiry_date: string
+  notes: string
+}
+interface DeliveryDraft {
+  received_by: string
+  supplier_name: string
+  delivery_type: DeliveryType
+  received_at: string
+  notes: string
+  lines: DeliveryLine[]
+}
+const blankRecvLine = (): DeliveryLine => ({ item_name: '', library_id: null, temp_checked: true, temp_value: '', critical_limit: '41', accepted: true, rejection_reason: '', batch_id: '', expiry_date: '', notes: '' })
+
 function todayStr(): string { return new Date().toISOString().split('T')[0] }
 function dateOf(iso: string): string { return iso.split('T')[0] }
+function nowLocalDatetime(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+// A line is compliant when its temp is within the critical limit (or no temp was checked).
+function recvLineCompliant(l: DeliveryLine): boolean {
+  if (!l.temp_checked) return true
+  const t = parseFloat(l.temp_value), lim = parseFloat(l.critical_limit)
+  if (isNaN(t) || isNaN(lim)) return true
+  return t <= lim
+}
 
 function printTempLog(
   logs: TemperatureLog[],
@@ -85,6 +146,53 @@ function printTempLog(
   if (w) { w.document.write(html); w.document.close(); w.print() }
 }
 
+function printReceivingLog(
+  logs: ReceivingLog[],
+  linesByLog: Record<string, ReceivingLine[]>,
+  locationName: string,
+  dateFrom: string,
+  dateTo: string
+) {
+  const fmt = (d: string) => new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const typeLabel = (t: string) => t === 'contract_kitchen' ? 'Contract Kitchen' : 'Standard'
+  const rows = logs.flatMap(log => (linesByLog[log.id] ?? []).map(ln => {
+    const bad = ln.compliant === false || !ln.accepted
+    return `<tr style="${bad ? 'color:#c0392b' : ''}">
+      <td>${fmt(log.received_at)}</td><td>${log.supplier_name || '—'}</td><td>${typeLabel(log.delivery_type)}</td>
+      <td${!ln.accepted ? ' style="text-decoration:line-through"' : ''}>${ln.item_name}</td>
+      <td>${ln.temp_checked && ln.temp_value != null ? `${ln.temp_value}°F` : '—'}</td>
+      <td>${ln.critical_limit != null ? `${ln.critical_limit}°F` : '—'}</td>
+      <td>${ln.compliant === false ? '✗' : '✓'}</td>
+      <td>${ln.accepted ? 'Yes' : 'No'}</td>
+      <td>${ln.batch_id || '—'}</td>
+      <td>${ln.notes || ''}</td>
+    </tr>`
+  })).join('')
+  const html = `<!DOCTYPE html><html><head><title>Receiving Log</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 20px; }
+      h2 { font-size: 13px; margin-bottom: 2px; }
+      p.meta { font-size: 9px; color: #555; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f0ede8; text-align: left; padding: 3px 6px; font-size: 8px; text-transform: uppercase; border-bottom: 2px solid #ccc; }
+      td { padding: 3px 6px; border-bottom: 1px solid #eee; }
+      .footer { font-size: 8px; color: #999; margin-top: 16px; }
+      @media print { body { margin: 0; } }
+    </style></head><body>
+    <h2>Receiving Log</h2>
+    <p class="meta">${locationName} · ${dateFrom} – ${dateTo} · Generated ${new Date().toLocaleDateString()}</p>
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Supplier</th><th>Type</th><th>Item</th><th>Temp</th><th>Limit</th><th>Compliant</th><th>Accepted</th><th>Batch ID</th><th>Notes</th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="10">No receiving logs for this period</td></tr>'}</tbody>
+    </table>
+    <p class="footer">HACCP Receiving Log · ${locationName} · ${dateFrom} – ${dateTo}<br/>CT DPH requirement: receiving logs retained 90 days.</p>
+    </body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
+}
+
 export default function HACCPModule({ locationId, locationName }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<HACCPTab>('log')
@@ -108,6 +216,15 @@ export default function HACCPModule({ locationId, locationName }: Props) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [actionDraft, setActionDraft] = useState<Record<string, string>>({})
+
+  // ── Receiving state ───────────────────────────────────────────
+  const [receivingLogs,  setReceivingLogs]  = useState<ReceivingLog[]>([])
+  const [receivingLines, setReceivingLines] = useState<Record<string, ReceivingLine[]>>({})
+  const [expandedRecvId, setExpandedRecvId] = useState<string | null>(null)
+  const [delivery,       setDelivery]       = useState<DeliveryDraft | null>(null)
+  const [parTemplate,    setParTemplate]    = useState<{ library_id: string; name: string }[]>([])
+  const [recvPrintFrom,  setRecvPrintFrom]  = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0] })
+  const [recvPrintTo,    setRecvPrintTo]    = useState(() => todayStr())
 
   const loadEquipment = useCallback(async () => {
     if (!locationId) { setLoading(false); return }
@@ -133,7 +250,122 @@ export default function HACCPModule({ locationId, locationName }: Props) {
     setActions((data ?? []) as CorrectiveAction[])
   }, [locationId, supabase])
 
-  useEffect(() => { loadEquipment(); loadRecentLogs(); loadActions() }, [loadEquipment, loadRecentLogs, loadActions])
+  const loadReceiving = useCallback(async () => {
+    if (!locationId) return
+    const { data: logs } = await supabase.from('haccp_receiving_logs').select('*')
+      .eq('location_id', locationId).order('received_at', { ascending: false }).limit(30)
+    const rows = (logs ?? []) as ReceivingLog[]
+    setReceivingLogs(rows)
+    const ids = rows.map(r => r.id)
+    if (ids.length) {
+      const { data: lines } = await supabase.from('haccp_receiving_log_lines').select('*').in('receiving_log_id', ids)
+      const map: Record<string, ReceivingLine[]> = {}
+      for (const ln of (lines ?? []) as ReceivingLine[]) { (map[ln.receiving_log_id] ??= []).push(ln) }
+      setReceivingLines(map)
+    } else { setReceivingLines({}) }
+  }, [locationId, supabase])
+
+  const loadTemplate = useCallback(async () => {
+    if (!locationId) return
+    const { data: pars } = await supabase.from('inventory_par_levels').select('library_id').eq('location_id', locationId)
+    const libIds = Array.from(new Set((pars ?? []).map((p: { library_id: string }) => p.library_id)))
+    if (!libIds.length) { setParTemplate([]); return }
+    const { data: libs } = await supabase.from('ingredient_library').select('id,name').in('id', libIds)
+    setParTemplate(((libs ?? []) as { id: string; name: string }[]).map(l => ({ library_id: l.id, name: l.name })))
+  }, [locationId, supabase])
+
+  useEffect(() => { loadEquipment(); loadRecentLogs(); loadActions(); loadReceiving(); loadTemplate() }, [loadEquipment, loadRecentLogs, loadActions, loadReceiving, loadTemplate])
+
+  // ── Receiving handlers ────────────────────────────────────────
+  function openDelivery() {
+    const lines = parTemplate.map(t => ({ ...blankRecvLine(), item_name: t.name, library_id: t.library_id }))
+    setDelivery({ received_by: '', supplier_name: '', delivery_type: 'standard', received_at: nowLocalDatetime(), notes: '', lines: lines.length ? lines : [blankRecvLine()] })
+  }
+  function setRecvLine(i: number, patch: Partial<DeliveryLine>) {
+    setDelivery(d => d ? { ...d, lines: d.lines.map((l, idx) => idx === i ? { ...l, ...patch } : l) } : d)
+  }
+
+  async function saveDelivery() {
+    if (!delivery || !locationId) return
+    if (!delivery.received_by.trim()) { alert('Received by is required'); return }
+    const lines = delivery.lines.filter(l => l.item_name.trim())
+    if (!lines.length) { alert('Add at least one item'); return }
+    setSaving(true)
+    const nowIso = delivery.received_at ? new Date(delivery.received_at).toISOString() : new Date().toISOString()
+    const overall = lines.every(l => recvLineCompliant(l) && l.accepted)
+
+    const { data: logRow, error } = await supabase.from('haccp_receiving_logs').insert({
+      location_id: locationId, supplier_name: delivery.supplier_name || '', delivery_type: delivery.delivery_type,
+      received_at: nowIso, received_by: delivery.received_by.trim(), notes: delivery.notes || '', overall_compliant: overall,
+    }).select().single()
+    if (error || !logRow) { setSaving(false); console.error('[haccp receiving]', error); alert('Failed to save receiving log'); return }
+    const logId = (logRow as { id: string }).id
+
+    let nonCompliant = 0
+    await supabase.from('haccp_receiving_log_lines').insert(lines.map(l => {
+      const comp = recvLineCompliant(l)
+      if (!comp || !l.accepted) nonCompliant++
+      return {
+        receiving_log_id: logId, library_id: l.library_id, item_name: l.item_name.trim(),
+        temp_checked: l.temp_checked,
+        temp_value: l.temp_checked && l.temp_value !== '' ? parseFloat(l.temp_value) : null,
+        critical_limit: l.critical_limit !== '' ? parseFloat(l.critical_limit) : null,
+        compliant: comp, accepted: l.accepted, rejection_reason: l.rejection_reason || '',
+        batch_id: l.batch_id || '', expiry_date: l.expiry_date || null, notes: l.notes || '',
+      }
+    }))
+
+    // Corrective actions for non-compliant / rejected lines.
+    for (const l of lines) {
+      const comp = recvLineCompliant(l)
+      if (comp && l.accepted) continue
+      const description = !l.accepted
+        ? `${l.item_name}: delivery rejected — ${l.rejection_reason || 'no reason given'}`
+        : `${l.item_name}: temp ${l.temp_value}°F exceeds limit ${l.critical_limit}°F`
+      await supabase.from('corrective_actions').insert({
+        location_id: locationId, trigger_type: 'receiving_log', trigger_id: logId,
+        description, discovered_at: nowIso, discovered_by: delivery.received_by.trim(),
+        action_taken: '', status: 'open',
+      })
+    }
+
+    // Contract kitchen: register received batches that don't already exist.
+    if (delivery.delivery_type === 'contract_kitchen') {
+      for (const l of lines) {
+        if (!l.accepted || !l.batch_id.trim()) continue
+        const { data: existing } = await supabase.from('prepared_batches').select('id')
+          .eq('location_id', locationId).eq('contract_batch_id', l.batch_id.trim()).limit(1)
+        if (existing && existing.length) continue
+        await supabase.from('prepared_batches').insert({
+          location_id: locationId, batch_name: l.item_name.trim(), batch_qty: null, batch_unit: 'each',
+          current_qty: null, current_unit: 'each', prep_date: dateOf(nowIso), use_by_date: l.expiry_date || null,
+          is_contract_kitchen: true, contract_batch_id: l.batch_id.trim(), status: 'active',
+          prep_by: '', storage_location: '', discarded_by: '', discard_reason: '', notes: '',
+        })
+      }
+    }
+
+    setSaving(false)
+    setDelivery(null)
+    loadReceiving(); loadActions()
+    alert(`✓ Receiving check logged — ${lines.length} items, ${nonCompliant} non-compliant`)
+  }
+
+  async function doPrintReceiving() {
+    if (!locationId) return
+    const { data: logs } = await supabase.from('haccp_receiving_logs').select('*')
+      .eq('location_id', locationId)
+      .gte('received_at', `${recvPrintFrom}T00:00:00`).lte('received_at', `${recvPrintTo}T23:59:59`)
+      .order('received_at', { ascending: true })
+    const rows = (logs ?? []) as ReceivingLog[]
+    const ids = rows.map(r => r.id)
+    let map: Record<string, ReceivingLine[]> = {}
+    if (ids.length) {
+      const { data: lines } = await supabase.from('haccp_receiving_log_lines').select('*').in('receiving_log_id', ids)
+      for (const ln of (lines ?? []) as ReceivingLine[]) { (map[ln.receiving_log_id] ??= []).push(ln) }
+    }
+    printReceivingLog(rows, map, locationName ?? 'Location', recvPrintFrom, recvPrintTo)
+  }
 
   // ── Compliance preview for a single input ─────────────────────
   function compliance(eq: HACCPEquipment, tempStr: string | undefined): 'ok' | 'bad' | null {
@@ -338,7 +570,7 @@ export default function HACCPModule({ locationId, locationName }: Props) {
       <div className="bg-white border-b border-[--border] px-6 py-4 flex-shrink-0">
         <h1 className="font-serif text-xl font-medium text-[--text] mb-3">Compliance — HACCP</h1>
         <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 w-fit">
-          {([['log','📋 Log Temps'],['corrective','⚠ Corrective Actions']] as [HACCPTab,string][]).map(([t, label]) => (
+          {([['log','📋 Log Temps'],['corrective','⚠ Corrective Actions'],['receiving','🚚 Receiving'],['cooking','🍳 Cooking/Reheating']] as [HACCPTab,string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${tab === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
               {label}
@@ -563,6 +795,187 @@ export default function HACCPModule({ locationId, locationName }: Props) {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── RECEIVING TAB ── */}
+      {tab === 'receiving' && (
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {!locationId ? (
+            <p className="text-sm text-[--muted]">No location selected.</p>
+          ) : (
+            <>
+              {/* Print + log buttons */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-[11px] text-[--muted]">Print log:</span>
+                  <input type="date" value={recvPrintFrom} onChange={e => setRecvPrintFrom(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                  <span className="text-[11px] text-[--hint]">to</span>
+                  <input type="date" value={recvPrintTo} onChange={e => setRecvPrintTo(e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                  <button onClick={doPrintReceiving} className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">🖨 Print receiving log</button>
+                </div>
+                {!delivery && (
+                  <button onClick={openDelivery} className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark]">+ Log delivery check</button>
+                )}
+              </div>
+
+              {/* Delivery form */}
+              {delivery && (
+                <div className="bg-white rounded-xl border border-[--border] p-4 space-y-3">
+                  <h3 className="font-serif text-sm font-medium text-[--text]">Log delivery check</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Received by</label>
+                      <input value={delivery.received_by} onChange={e => setDelivery(d => ({ ...d!, received_by: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                    <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Supplier</label>
+                      <input value={delivery.supplier_name} onChange={e => setDelivery(d => ({ ...d!, supplier_name: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                    <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Delivery type</label>
+                      <select value={delivery.delivery_type} onChange={e => setDelivery(d => ({ ...d!, delivery_type: e.target.value as DeliveryType }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full bg-white">
+                        <option value="standard">Standard delivery</option><option value="contract_kitchen">Contract kitchen</option>
+                      </select></div>
+                    <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Date/time</label>
+                      <input type="datetime-local" value={delivery.received_at} onChange={e => setDelivery(d => ({ ...d!, received_at: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                    <div className="col-span-2"><label className="block text-[11px] font-medium text-[--muted] mb-1">Notes</label>
+                      <input value={delivery.notes} onChange={e => setDelivery(d => ({ ...d!, notes: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {delivery.lines.map((l, i) => {
+                      const comp = recvLineCompliant(l)
+                      return (
+                        <div key={i} className="border border-[--border] rounded-lg p-2.5 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <input value={l.item_name} onChange={e => setRecvLine(i, { item_name: e.target.value })} placeholder="Item"
+                              className="flex-1 min-w-[140px] text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                            <label className="flex items-center gap-1 text-[11px] text-[--muted] cursor-pointer">
+                              <input type="checkbox" checked={l.temp_checked} onChange={e => setRecvLine(i, { temp_checked: e.target.checked })} className="accent-[--accent]" /> Temp checked
+                            </label>
+                            {l.temp_checked && (
+                              <>
+                                <input type="number" step="0.1" value={l.temp_value} onChange={e => setRecvLine(i, { temp_value: e.target.value })} placeholder="Temp"
+                                  className="w-20 text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                                <span className="text-[10px] text-[--hint]">limit</span>
+                                <input type="number" step="0.1" value={l.critical_limit} onChange={e => setRecvLine(i, { critical_limit: e.target.value })}
+                                  className="w-16 text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                                {l.temp_value !== '' && (comp ? <span className="text-green-600 font-semibold">✓</span> : <span className="text-red-600 font-semibold">✗</span>)}
+                              </>
+                            )}
+                            <label className="flex items-center gap-1 text-[11px] text-[--muted] cursor-pointer">
+                              <input type="checkbox" checked={l.accepted} onChange={e => setRecvLine(i, { accepted: e.target.checked })} className="accent-[--accent]" /> Accepted
+                            </label>
+                            <button onClick={() => setDelivery(d => ({ ...d!, lines: d!.lines.filter((_, idx) => idx !== i) }))} className="text-red-400 hover:text-red-600 ml-auto" title="Remove">✕</button>
+                          </div>
+                          {!l.accepted && (
+                            <input value={l.rejection_reason} onChange={e => setRecvLine(i, { rejection_reason: e.target.value })} placeholder="Rejection reason"
+                              className="w-full text-xs border border-red-200 rounded-lg px-2 py-1 outline-none focus:border-red-400" />
+                          )}
+                          {delivery.delivery_type === 'contract_kitchen' && (
+                            <div className="flex items-center gap-2">
+                              <input value={l.batch_id} onChange={e => setRecvLine(i, { batch_id: e.target.value })} placeholder="Batch ID"
+                                className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                              <span className="text-[10px] text-[--hint]">expiry</span>
+                              <input type="date" value={l.expiry_date} onChange={e => setRecvLine(i, { expiry_date: e.target.value })}
+                                className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent]" />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    <button onClick={() => setDelivery(d => ({ ...d!, lines: [...d!.lines, blankRecvLine()] }))}
+                      className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium">+ Add item</button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button onClick={saveDelivery} disabled={saving}
+                      className="px-4 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">{saving ? 'Saving…' : 'Save delivery check'}</button>
+                    <button onClick={() => setDelivery(null)}
+                      className="px-4 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Recent logs */}
+              <div>
+                <h2 className="font-serif text-sm font-medium text-[--text] mb-2">Recent deliveries</h2>
+                {receivingLogs.length === 0 ? (
+                  <p className="text-sm text-[--muted]">No receiving checks logged.</p>
+                ) : (
+                  <div className="bg-white rounded-xl border border-[--border] overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[--border] bg-[--surface-2] text-[10px] uppercase tracking-wide text-[--hint]">
+                          <th className="text-left px-3 py-2">Date/Time</th><th className="text-left px-3 py-2">Supplier</th>
+                          <th className="text-left px-3 py-2">Type</th><th className="text-left px-3 py-2">Items</th>
+                          <th className="text-left px-3 py-2">Compliant</th><th className="text-left px-3 py-2 w-14"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {receivingLogs.map(log => {
+                          const lines = receivingLines[log.id] ?? []
+                          return (
+                            <FragmentRow key={log.id}>
+                              <tr className="border-b border-[--border]">
+                                <td className="px-3 py-2.5 text-[--muted]">{new Date(log.received_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
+                                <td className="px-3 py-2.5 text-[--text]">{log.supplier_name || '—'}</td>
+                                <td className="px-3 py-2.5 text-[--muted]">{log.delivery_type === 'contract_kitchen' ? 'Contract Kitchen' : 'Standard'}</td>
+                                <td className="px-3 py-2.5 text-[--muted]">{lines.length}</td>
+                                <td className="px-3 py-2.5">
+                                  {log.overall_compliant === true ? <span className="text-green-600">✓</span>
+                                    : log.overall_compliant === false ? <span className="text-red-600">✗</span>
+                                    : <span className="text-amber-600">Partial</span>}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <button onClick={() => setExpandedRecvId(expandedRecvId === log.id ? null : log.id)}
+                                    className="px-2 py-0.5 text-[10px] border border-[--border-2] rounded text-[--muted] hover:text-[--text]">View</button>
+                                </td>
+                              </tr>
+                              {expandedRecvId === log.id && (
+                                <tr className="border-b border-[--border] bg-[--surface-2]/40">
+                                  <td colSpan={6} className="px-3 py-2">
+                                    <table className="w-full text-[11px]">
+                                      <thead><tr className="text-[10px] uppercase tracking-wide text-[--hint]">
+                                        <th className="text-left py-1 pr-3">Item</th><th className="text-left py-1 pr-3">Temp</th><th className="text-left py-1 pr-3">Limit</th>
+                                        <th className="text-left py-1 pr-3">Compliant</th><th className="text-left py-1 pr-3">Accepted</th><th className="text-left py-1 pr-3">Batch ID</th><th className="text-left py-1 pr-3">Notes</th>
+                                      </tr></thead>
+                                      <tbody>
+                                        {lines.map(ln => {
+                                          const bad = ln.compliant === false
+                                          return (
+                                            <tr key={ln.id} className={bad ? 'bg-red-50/60' : ''}>
+                                              <td className={`py-1 pr-3 ${!ln.accepted ? 'line-through text-[--hint]' : 'text-[--text]'}`}>{ln.item_name}</td>
+                                              <td className="py-1 pr-3 text-[--muted]">{ln.temp_checked && ln.temp_value != null ? `${ln.temp_value}°F` : '—'}</td>
+                                              <td className="py-1 pr-3 text-[--muted]">{ln.critical_limit != null ? `${ln.critical_limit}°F` : '—'}</td>
+                                              <td className="py-1 pr-3">{ln.compliant === false ? <span className="text-red-600">✗</span> : <span className="text-green-600">✓</span>}</td>
+                                              <td className="py-1 pr-3 text-[--muted]">{ln.accepted ? 'Yes' : `No${ln.rejection_reason ? ` — ${ln.rejection_reason}` : ''}`}</td>
+                                              <td className="py-1 pr-3 text-[--muted]">{ln.batch_id || '—'}</td>
+                                              <td className="py-1 pr-3 text-[--muted]">{ln.notes}</td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
+                              )}
+                            </FragmentRow>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── COOKING/REHEATING TAB ── */}
+      {tab === 'cooking' && (
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="text-center py-16 text-[--muted]">
+            <div className="text-4xl opacity-20 mb-3">🍳</div>
+            <p className="text-sm">Cooking / reheating log coming in the next phase.</p>
+          </div>
         </div>
       )}
     </div>
