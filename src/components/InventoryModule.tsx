@@ -723,7 +723,8 @@ export default function InventoryModule({ locationId, restaurantId, locationName
       qty_change: qty, unit: ln.unit, reason: adjustReason, notes: adjustNotes || '',
       source: 'variance_report', count_id: varianceCountId,
     })
-    if (ln.library_id) await applyLevelDelta(ln.library_id, qty, ln.unit)
+    // Count already set on_hand to physical truth —
+    // this adjustment is a ledger record only (no further delta)
     setAdjustedLineIds(s => new Set(s).add(ln.id))
     setAdjustLineId(null); setAdjustQty(''); setAdjustReason('Waste'); setAdjustNotes('')
     load()
