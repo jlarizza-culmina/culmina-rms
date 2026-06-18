@@ -56,14 +56,21 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    // Save arrival time and mode if provided
-    if (data?.session_id && (estimatedArrivalAt || arrivalMode)) {
-      await supabase.from('waitlist_sessions').update({
-        estimated_arrival_at: estimatedArrivalAt
+    // Persist marketing opt-in (+ arrival time/mode if provided) onto the session.
+    // Wrapped so a missing column can't block the join.
+    if (data?.session_id) {
+      const sessionUpdate: Record<string, unknown> = {
+        marketing_opt_in:    body.marketing_opt_in ?? false,
+        marketing_opt_in_at: body.marketing_opt_in ? new Date().toISOString() : null,
+      }
+      if (estimatedArrivalAt || arrivalMode) {
+        sessionUpdate.estimated_arrival_at = estimatedArrivalAt
           ? new Date(estimatedArrivalAt * 1000).toISOString()
-          : null,
-        arrival_mode: arrivalMode ?? 'other',
-      }).eq('id', data.session_id)
+          : null
+        sessionUpdate.arrival_mode = arrivalMode ?? 'other'
+      }
+      const { error: updErr } = await supabase.from('waitlist_sessions').update(sessionUpdate).eq('id', data.session_id)
+      if (updErr) console.error('Session update (marketing/arrival) failed:', updErr)
     }
 
     const restaurantName = (location.restaurants as unknown as { name: string })?.name ?? 'us'
