@@ -14,7 +14,8 @@ interface Props {
   locationName?: string
 }
 
-type InvTab = 'dashboard' | 'par' | 'receiving' | 'batches'
+type InvTab = 'dashboard' | 'par' | 'receiving' | 'batches' | 'count'
+type CountTrack = 'beverage' | 'food' | 'full'
 type Track = 'beverage' | 'food'
 
 interface ParDraft {
@@ -87,6 +88,102 @@ function nowLocalDatetime(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+interface InventoryCount {
+  id: string
+  location_id: string
+  count_date: string
+  track: string
+  counted_by: string
+  completed_at: string | null
+}
+interface InventoryCountLine {
+  id: string
+  count_id: string
+  library_id: string | null
+  item_name: string
+  counted_qty: number
+  unit: string
+  theoretical_qty: number | null
+  notes: string
+}
+interface CountRow {
+  library_id: string
+  name: string
+  category: string
+  unit: string
+  expected: number | null
+  par_qty: number
+  last_count_qty: number | null
+  track: Track
+  counted: string
+  notes: string
+}
+interface CountDraft {
+  track: CountTrack
+  blind: boolean
+  counted_by: string
+  rows: CountRow[]
+}
+
+function printCountSheet(
+  items: Array<{ name: string; category: string; unit: string; last_count_qty: number | null; par_qty: number }>,
+  track: string,
+  locationName: string
+) {
+  const date = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  })
+  const rows = items.map(item => `
+      <tr>
+        <td>${item.category || '—'}</td>
+        <td><strong>${item.name}</strong></td>
+        <td>${item.unit}</td>
+        <td>${item.last_count_qty ?? '—'}</td>
+        <td>${item.par_qty}</td>
+        <td style="width:80px;border-bottom:1px solid #999">&nbsp;</td>
+        <td style="width:120px;border-bottom:1px solid #999">&nbsp;</td>
+      </tr>`).join('')
+
+  const html = `<!DOCTYPE html><html><head>
+    <title>Count Sheet</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; }
+      h2 { font-size: 14px; margin-bottom: 2px; }
+      .meta { font-size: 10px; color: #555; margin-bottom: 4px; }
+      .warning { font-size: 10px; color: #c0392b; font-weight: bold;
+                 border: 1px solid #c0392b; padding: 4px 8px;
+                 display: inline-block; margin-bottom: 12px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #f0ede8; text-align: left; padding: 4px 6px;
+           font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em;
+           border-bottom: 2px solid #ccc; }
+      td { padding: 5px 6px; border-bottom: 1px solid #eee; }
+      tr:nth-child(even) { background: #fafafa; }
+      .footer { font-size: 9px; color: #999; margin-top: 16px; }
+      @media print { body { margin: 10px; } }
+    </style></head><body>
+    <h2>${track.charAt(0).toUpperCase() + track.slice(1)} Count Sheet</h2>
+    <div class="meta">${locationName} · ${date}</div>
+    <div class="meta">Counted by: ________________________</div>
+    <div class="warning">⚠ DO NOT SHOW TO STAFF BEFORE COUNT IS COMPLETE</div>
+    <table>
+      <thead><tr>
+        <th>Category</th><th>Item</th><th>Unit</th>
+        <th>Last Count</th><th>Par</th>
+        <th>Counted</th><th>Notes</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">
+      ${locationName} · ${track} count · ${date}<br/>
+      Enter counts digitally in Culmina after completing this sheet.
+    </div>
+    </body></html>`
+
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
+}
+
 export default function InventoryModule({ locationId, restaurantId, locationName }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<InvTab>('dashboard')
@@ -120,11 +217,19 @@ export default function InventoryModule({ locationId, restaurantId, locationName
   const [useSource, setUseSource] = useState<'service_use' | 'mise_en_place' | 'waste' | 'manual'>('service_use')
   const [newBatch, setNewBatch] = useState<NewBatchDraft | null>(null)
 
+  // Count
+  const [counts, setCounts] = useState<InventoryCount[]>([])
+  const [countLinesByCount, setCountLinesByCount] = useState<Record<string, InventoryCountLine[]>>({})
+  const [countDraft, setCountDraft] = useState<CountDraft | null>(null)
+  const [countSheetTrack, setCountSheetTrack] = useState<CountTrack>('beverage')
+  const [varianceCountId, setVarianceCountId] = useState<string | null>(null)
+  const [varianceLines, setVarianceLines] = useState<InventoryCountLine[]>([])
+
   const load = useCallback(async () => {
     if (!locationId) { setLoading(false); return }
     setLoading(true)
     const since = new Date(Date.now() - 30 * 86400000).toISOString()
-    const [{ data: pars }, { data: levs }, { data: bats }, { data: lib }, { data: recs }, { data: recipeRows }] = await Promise.all([
+    const [{ data: pars }, { data: levs }, { data: bats }, { data: lib }, { data: recs }, { data: recipeRows }, { data: cnts }] = await Promise.all([
       supabase.from('inventory_par_levels').select('*').eq('location_id', locationId),
       supabase.from('inventory_levels').select('*').eq('location_id', locationId),
       supabase.from('prepared_batches').select('*').eq('location_id', locationId).order('use_by_date', { ascending: true }),
@@ -133,6 +238,7 @@ export default function InventoryModule({ locationId, restaurantId, locationName
       supabase.from('inventory_receipts').select('*').eq('location_id', locationId)
         .gte('received_at', since).order('received_at', { ascending: false }),
       supabase.from('recipes').select('id,name').eq('restaurant_id', restaurantId).eq('is_deleted', false).order('name'),
+      supabase.from('inventory_counts').select('*').eq('location_id', locationId).order('count_date', { ascending: false }).limit(10),
     ])
     setParLevels((pars ?? []) as InventoryParLevel[])
     setLevels((levs ?? []) as InventoryLevel[])
@@ -140,6 +246,7 @@ export default function InventoryModule({ locationId, restaurantId, locationName
     setLibrary((lib ?? []) as LibraryIngredient[])
     setReceipts((recs ?? []) as InventoryReceipt[])
     setRecipes((recipeRows ?? []) as { id: string; name: string }[])
+    setCounts((cnts ?? []) as InventoryCount[])
 
     const recIds = (recs ?? []).map((r: { id: string }) => r.id)
     if (recIds.length) {
@@ -152,6 +259,19 @@ export default function InventoryModule({ locationId, restaurantId, locationName
       setReceiptLines(map)
     } else {
       setReceiptLines({})
+    }
+
+    const countIds = (cnts ?? []).map((c: { id: string }) => c.id)
+    if (countIds.length) {
+      const { data: clines } = await supabase.from('inventory_count_lines').select('*').in('count_id', countIds)
+      const map: Record<string, InventoryCountLine[]> = {}
+      for (const ln of (clines ?? []) as InventoryCountLine[]) {
+        if (!map[ln.count_id]) map[ln.count_id] = []
+        map[ln.count_id].push(ln)
+      }
+      setCountLinesByCount(map)
+    } else {
+      setCountLinesByCount({})
     }
     setLoading(false)
   }, [locationId, restaurantId, supabase])
@@ -412,6 +532,77 @@ export default function InventoryModule({ locationId, restaurantId, locationName
     load()
   }
 
+  // ── Count ─────────────────────────────────────────────────────
+  function countItems(t: CountTrack) {
+    const pars = t === 'full' ? parLevels : parLevels.filter(p => p.track === t)
+    return pars.map(p => {
+      const lvl = levels.find(l => l.library_id === p.library_id && l.track === p.track)
+      const lib = library.find(l => l.id === p.library_id)
+      return {
+        library_id: p.library_id, name: lib?.name ?? '(unknown)', category: lib?.category ?? '',
+        unit: p.par_unit, expected: lvl ? lvl.on_hand_qty : null, par_qty: p.par_qty,
+        last_count_qty: lvl?.last_count_qty ?? null, track: p.track,
+      }
+    }).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
+  }
+
+  function startCount(t: CountTrack) {
+    setVarianceCountId(null)
+    setCountDraft({
+      track: t, blind: true, counted_by: '',
+      rows: countItems(t).map(it => ({ ...it, counted: '', notes: '' })),
+    })
+  }
+  function setCountRow(i: number, patch: Partial<CountRow>) {
+    setCountDraft(d => d ? { ...d, rows: d.rows.map((r, idx) => idx === i ? { ...r, ...patch } : r) } : d)
+  }
+
+  async function submitCount() {
+    if (!countDraft || !locationId) return
+    if (!countDraft.counted_by.trim()) { alert('Counted by is required'); return }
+    const entered = countDraft.rows.filter(r => r.counted !== '' && !isNaN(parseFloat(r.counted)))
+    if (!entered.length) { alert('Enter at least one counted quantity'); return }
+    setSaving(true)
+    const nowIso = new Date().toISOString()
+    const by = countDraft.counted_by.trim()
+    const { data: cnt } = await supabase.from('inventory_counts').insert({
+      location_id: locationId, count_date: new Date().toISOString().split('T')[0],
+      track: countDraft.track, counted_by: by, completed_at: nowIso,
+    }).select().single()
+    const countId = (cnt as { id: string } | null)?.id
+    if (!countId) { setSaving(false); alert('Failed to create count'); return }
+
+    await supabase.from('inventory_count_lines').insert(entered.map(r => ({
+      count_id: countId, library_id: r.library_id, item_name: r.name,
+      counted_qty: parseFloat(r.counted), unit: r.unit, theoretical_qty: r.expected, notes: r.notes || '',
+    })))
+
+    for (const r of entered) {
+      const counted = parseFloat(r.counted)
+      const existing = levels.find(l => l.library_id === r.library_id && l.track === r.track)
+      if (existing) {
+        await supabase.from('inventory_levels').update({
+          on_hand_qty: counted, last_count_qty: counted, last_count_at: nowIso, last_count_by: by, updated_at: nowIso,
+        }).eq('id', existing.id)
+      } else {
+        await supabase.from('inventory_levels').insert({
+          location_id: locationId, library_id: r.library_id, track: r.track,
+          on_hand_qty: counted, on_hand_unit: r.unit, last_count_qty: counted, last_count_at: nowIso, last_count_by: by,
+        })
+      }
+    }
+    setSaving(false)
+    setCountDraft(null)
+    load()
+    viewVariance(countId)
+  }
+
+  async function viewVariance(countId: string) {
+    const { data } = await supabase.from('inventory_count_lines').select('*').eq('count_id', countId)
+    setVarianceLines((data ?? []) as InventoryCountLine[])
+    setVarianceCountId(countId)
+  }
+
   const fi = 'text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full'
 
   if (loading) return <div className="flex items-center justify-center h-full text-[--hint] text-sm">Loading inventory…</div>
@@ -421,7 +612,7 @@ export default function InventoryModule({ locationId, restaurantId, locationName
       <div className="bg-white border-b border-[--border] px-6 py-4 flex-shrink-0">
         <h1 className="font-serif text-xl font-medium text-[--text] mb-3">Inventory{locationName ? ` — ${locationName}` : ''}</h1>
         <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 w-fit">
-          {([['dashboard', '📦 Dashboard'], ['par', '⚖ Par Levels'], ['receiving', '🚚 Receiving'], ['batches', '📋 Batches']] as [InvTab, string][]).map(([t, label]) => (
+          {([['dashboard', '📦 Dashboard'], ['par', '⚖ Par Levels'], ['receiving', '🚚 Receiving'], ['batches', '📋 Batches'], ['count', '📋 Count']] as [InvTab, string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${tab === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
               {label}
@@ -754,7 +945,7 @@ export default function InventoryModule({ locationId, restaurantId, locationName
               )}
             </div>
           </div>
-        ) : (
+        ) : tab === 'batches' ? (
           // ── BATCHES ──
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -884,6 +1075,162 @@ export default function InventoryModule({ locationId, restaurantId, locationName
                 </table>
               </div>
             )}
+          </div>
+        ) : (
+          // ── COUNT ──
+          <div className="space-y-6">
+            {/* Section 1: start a new count */}
+            <div>
+              <h2 className="font-serif text-sm font-medium text-[--text] mb-2">Start a new count</h2>
+              {!countDraft ? (
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => startCount('beverage')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">🍷 Beverage Count</button>
+                  <button onClick={() => startCount('food')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">🥗 Food Count</button>
+                  <button onClick={() => startCount('full')} className="px-4 py-2.5 text-sm font-medium rounded-xl border border-[--border-2] text-[--text] hover:bg-[--surface-2]">📦 Full Count</button>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-[--border] p-4 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h3 className="font-serif text-sm font-medium text-[--text] capitalize">{countDraft.track} count</h3>
+                    <label className="flex items-center gap-1.5 text-[11px] text-[--muted] cursor-pointer select-none">
+                      <input type="checkbox" checked={countDraft.blind}
+                        onChange={e => setCountDraft(d => d ? { ...d, blind: e.target.checked } : d)} className="accent-[--accent]" />
+                      Blind count — hide expected quantities
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[--muted] mb-1">Counted by</label>
+                    <input value={countDraft.counted_by} onChange={e => setCountDraft(d => d ? { ...d, counted_by: e.target.value } : d)}
+                      placeholder="Your name" className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-48" />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[11px]">
+                      <thead>
+                        <tr className="text-[10px] uppercase tracking-wide text-[--hint] border-b border-[--border]">
+                          <th className="text-left py-1 pr-2">Category</th>
+                          <th className="text-left py-1 pr-2">Item</th>
+                          <th className="text-left py-1 pr-2 w-16">Unit</th>
+                          {!countDraft.blind && <th className="text-left py-1 pr-2 w-20">Expected</th>}
+                          <th className="text-left py-1 pr-2 w-24">Counted Qty</th>
+                          <th className="text-left py-1 pr-2">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {countDraft.rows.map((r, i) => (
+                          <tr key={`${r.library_id}-${r.track}`} className="border-b border-[--border]">
+                            <td className="py-1 pr-2 text-[--muted]">{r.category}</td>
+                            <td className="py-1 pr-2 font-medium text-[--text]">{r.name}</td>
+                            <td className="py-1 pr-2 text-[--muted]">{r.unit}</td>
+                            {!countDraft.blind && <td className="py-1 pr-2 text-[--muted]">{r.expected ?? '?'}</td>}
+                            <td className="py-1 pr-2">
+                              <input type="number" step="any" min={0} value={r.counted} placeholder="—"
+                                onChange={e => setCountRow(i, { counted: e.target.value })} className={fi} />
+                            </td>
+                            <td className="py-1 pr-2">
+                              <input value={r.notes} onChange={e => setCountRow(i, { notes: e.target.value })} className={fi} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={submitCount} disabled={saving}
+                      className="px-4 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">{saving ? 'Saving…' : 'Submit Count'}</button>
+                    <button onClick={() => setCountDraft(null)}
+                      className="px-4 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Variance report (basic — enhanced in Phase 2b) */}
+            {varianceCountId && (
+              <div className="bg-white rounded-xl border border-[--border] p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-serif text-sm font-medium text-[--text]">Variance report</h3>
+                  <button onClick={() => { setVarianceCountId(null); setVarianceLines([]) }} className="text-[11px] text-[--hint] hover:text-[--muted]">✕ Close</button>
+                </div>
+                {varianceLines.length === 0 ? (
+                  <p className="text-xs text-[--muted]">No lines recorded.</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[--border] text-[10px] uppercase tracking-wide text-[--hint]">
+                        <th className="text-left px-2 py-1.5">Item</th>
+                        <th className="text-left px-2 py-1.5">Counted</th>
+                        <th className="text-left px-2 py-1.5">Expected</th>
+                        <th className="text-left px-2 py-1.5">Variance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {varianceLines.map(ln => {
+                        const v = ln.counted_qty - (ln.theoretical_qty ?? 0)
+                        return (
+                          <tr key={ln.id} className="border-b border-[--border] last:border-0">
+                            <td className="px-2 py-1.5 font-medium text-[--text]">{ln.item_name}</td>
+                            <td className="px-2 py-1.5 text-[--muted]">{ln.counted_qty} {ln.unit}</td>
+                            <td className="px-2 py-1.5 text-[--muted]">{ln.theoretical_qty ?? '—'}</td>
+                            <td className={`px-2 py-1.5 font-medium ${v < 0 ? 'text-red-600' : v > 0 ? 'text-[--green]' : 'text-[--muted]'}`}>{v > 0 ? '+' : ''}{+v.toFixed(2)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Section 2: recent counts */}
+            <div>
+              <h2 className="font-serif text-sm font-medium text-[--text] mb-2">Recent counts</h2>
+              {counts.length === 0 ? (
+                <p className="text-sm text-[--muted]">No counts recorded yet.</p>
+              ) : (
+                <div className="bg-white rounded-xl border border-[--border] overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[--border] bg-[--surface-2] text-[10px] uppercase tracking-wide text-[--hint]">
+                        <th className="text-left px-3 py-2">Date</th>
+                        <th className="text-left px-3 py-2">Track</th>
+                        <th className="text-left px-3 py-2">Counted by</th>
+                        <th className="text-left px-3 py-2">Items</th>
+                        <th className="text-left px-3 py-2 w-28"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {counts.map(c => (
+                        <tr key={c.id} className="border-b border-[--border] last:border-0">
+                          <td className="px-3 py-2.5 text-[--muted]">{fmtDay(c.count_date)}</td>
+                          <td className="px-3 py-2.5 text-[--muted] capitalize">{c.track}</td>
+                          <td className="px-3 py-2.5 text-[--text]">{c.counted_by}</td>
+                          <td className="px-3 py-2.5 text-[--muted]">{(countLinesByCount[c.id] ?? []).length}</td>
+                          <td className="px-3 py-2.5">
+                            <button onClick={() => viewVariance(c.id)}
+                              className="px-2 py-0.5 text-[10px] border border-[--border-2] rounded text-[--muted] hover:text-[--text]">View variance</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Section 3: print count sheet */}
+            <div>
+              <h2 className="font-serif text-sm font-medium text-[--text] mb-2">Print count sheet</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5">
+                  {(['beverage', 'food', 'full'] as CountTrack[]).map(t => (
+                    <button key={t} onClick={() => setCountSheetTrack(t)}
+                      className={`px-3 py-1 text-xs font-medium rounded-md capitalize transition-all ${countSheetTrack === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>{t}</button>
+                  ))}
+                </div>
+                <button onClick={() => printCountSheet(countItems(countSheetTrack), countSheetTrack, locationName ?? 'Location')}
+                  className="text-xs px-3 py-1.5 border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">🖨 Print Count Sheet</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
