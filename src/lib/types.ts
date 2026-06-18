@@ -458,6 +458,38 @@ export interface StaffSkill {
   updated_at:    string
 }
 
+export interface CertificationDefinition {
+  id:                     string
+  restaurant_id:          string | null
+  name:                   string
+  category:               'food_safety' | 'alcohol' | 'health' | 'legal' | 'other'
+  description:            string
+  issuing_body:           string
+  validity_period_months: number | null
+  is_required:            boolean
+  required_for_roles:     string[]
+  is_active:              boolean
+  sort_order:             number
+  created_at:             string
+}
+
+export interface StaffCertification {
+  id:                 string
+  staff_id:           string
+  certification_id:   string
+  issue_date:         string | null
+  expiry_date:        string | null
+  certificate_number: string
+  issuing_body:       string
+  document_url:       string
+  status:             'active' | 'expired' | 'revoked' | 'pending'
+  notes:              string
+  verified_by:        string | null
+  verified_at:        string | null
+  created_at:         string
+  updated_at:         string
+}
+
 export interface InventoryParLevel {
   id:                 string
   location_id:        string

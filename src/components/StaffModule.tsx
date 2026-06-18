@@ -3,7 +3,7 @@
 // Gap 7 staff management: staff_members + roles + staff_location_roles.
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
-import type { Role, StaffMember, StaffLocationRole, SkillDefinition, SkillLevel, StaffSkill } from '@/lib/types'
+import type { Role, StaffMember, StaffLocationRole, SkillDefinition, SkillLevel, StaffSkill, CertificationDefinition, StaffCertification } from '@/lib/types'
 
 interface Props {
   restaurantId: string
@@ -17,6 +17,21 @@ type EditTab = 'profile' | 'access' | 'skills' | 'certifications'
 const CAT_LABELS: Record<string, string> = { boh: 'BOH', bar: 'Bar', foh: 'FOH', management: 'Management', general: 'General' }
 const LEVEL_DOT: Record<string, string> = { learning: '#9CA3AF', competent: '#2563EB', proficient: '#16A34A', expert: '#D97706' }
 function levelDot(name: string): string { return LEVEL_DOT[name.toLowerCase()] ?? '#9CA3AF' }
+
+const CERT_CAT_LABELS: Record<string, string> = { food_safety: 'Food Safety', alcohol: 'Alcohol', health: 'Health', legal: 'Legal', other: 'Other' }
+const CERT_BADGE: Record<string, string> = {
+  active:        'bg-green-50 text-green-700 border-green-200',
+  expiring_soon: 'bg-amber-50 text-amber-700 border-amber-200',
+  expired:       'bg-red-50 text-red-700 border-red-200',
+  pending:       'bg-[--surface-2] text-[--muted] border-[--border]',
+  revoked:       'bg-red-100 text-red-800 border-red-300',
+}
+function addMonthsStr(dateStr: string, months: number): string {
+  const d = new Date(dateStr + 'T12:00:00'); d.setMonth(d.getMonth() + months); return d.toISOString().split('T')[0]
+}
+function addDaysStr(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + days); return d.toISOString().split('T')[0]
+}
 
 const EMPLOYMENT_OPTIONS: { value: NonNullable<StaffMember['employment_type']>; label: string }[] = [
   { value: 'full_time',  label: 'Full-time' },
@@ -64,18 +79,24 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
   const [showInactiveSkills, setShowInactiveSkills] = useState(false)
   const [skillDraft, setSkillDraft] = useState<{ id?: string; skill_id: string; level_id: string; achieved_date: string; notes: string } | null>(null)
 
+  // Certifications tab
+  const [certDefs, setCertDefs] = useState<CertificationDefinition[]>([])
+  const [allCerts, setAllCerts] = useState<StaffCertification[]>([])
+  const [certDraft, setCertDraft] = useState<{ id?: string; certification_id: string; issue_date: string; expiry_date: string; certificate_number: string; issuing_body: string; status: 'active' | 'pending' | 'revoked'; document_url: string; notes: string } | null>(null)
+
   // Inline role-assignment form
   const [asnDraft, setAsnDraft] = useState<{ location_id: string; role_id: string; is_primary_location: boolean; effective_from: string; effective_until: string } | null>(null)
 
   const load = useCallback(async () => {
     if (!restaurantId) { setLoading(false); return }
     setLoading(true)
-    const [{ data: staffData }, { data: roleData }, { data: locData }, { data: defs }, { data: lvls }] = await Promise.all([
+    const [{ data: staffData }, { data: roleData }, { data: locData }, { data: defs }, { data: lvls }, { data: cdefs }] = await Promise.all([
       supabase.from('staff_members').select('*').eq('restaurant_id', restaurantId).order('name'),
       supabase.from('roles').select('*').or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`).order('name'),
       supabase.from('locations').select('id,name').eq('restaurant_id', restaurantId).order('name'),
       supabase.from('skill_definitions').select('*').or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`).eq('is_active', true).order('category').order('sort_order'),
       supabase.from('skill_levels').select('*').is('skill_id', null).order('value'),
+      supabase.from('certification_definitions').select('*').or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`).eq('is_active', true).order('sort_order'),
     ])
     const staffRows = (staffData ?? []) as StaffMember[]
     setStaff(staffRows)
@@ -83,13 +104,19 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
     setLocations((locData ?? []) as { id: string; name: string }[])
     setSkillDefs((defs ?? []) as SkillDefinition[])
     setSkillLevels((lvls ?? []) as SkillLevel[])
+    setCertDefs((cdefs ?? []) as CertificationDefinition[])
 
     const staffIds = staffRows.map(s => s.id)
     if (staffIds.length) {
-      const { data: asnData } = await supabase.from('staff_location_roles').select('*').in('staff_id', staffIds)
+      const [{ data: asnData }, { data: certData }] = await Promise.all([
+        supabase.from('staff_location_roles').select('*').in('staff_id', staffIds),
+        supabase.from('staff_certifications').select('*').in('staff_id', staffIds),
+      ])
       setAssignments((asnData ?? []) as StaffLocationRole[])
+      setAllCerts((certData ?? []) as StaffCertification[])
     } else {
       setAssignments([])
+      setAllCerts([])
     }
     setLoading(false)
   }, [restaurantId, supabase])
@@ -128,6 +155,78 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
     })
     setSkillDraft(null)
     loadSkills(draft.id)
+  }
+
+  // ── Certifications ────────────────────────────────────────────
+  function certStatusOf(c: StaffCertification): 'active' | 'expiring_soon' | 'expired' | 'pending' | 'revoked' {
+    if (c.status === 'revoked') return 'revoked'
+    if (c.status === 'pending') return 'pending'
+    const today = todayStr()
+    if (c.expiry_date) {
+      if (c.expiry_date < today) return 'expired'
+      if (c.expiry_date <= addDaysStr(today, 30)) return 'expiring_soon'
+    }
+    return 'active'
+  }
+  function staffCertDot(staffId: string): { color: string; label: string } {
+    const certs = allCerts.filter(c => c.staff_id === staffId)
+    if (!certs.length) return { color: '#D1D5DB', label: 'No certifications' }
+    const today = todayStr()
+    const soon = addDaysStr(today, 30)
+    if (certs.some(c => c.status === 'active' && c.expiry_date && c.expiry_date < today)) return { color: '#DC2626', label: 'Cert expired' }
+    if (certs.some(c => c.expiry_date && c.expiry_date >= today && c.expiry_date <= soon)) return { color: '#D97706', label: 'Cert expiring' }
+    return { color: '#16A34A', label: 'All current' }
+  }
+
+  function openAddCert() { setCertDraft({ certification_id: '', issue_date: '', expiry_date: '', certificate_number: '', issuing_body: '', status: 'active', document_url: '', notes: '' }) }
+  function openEditCert(c: StaffCertification) {
+    setCertDraft({
+      id: c.id, certification_id: c.certification_id, issue_date: c.issue_date ?? '', expiry_date: c.expiry_date ?? '',
+      certificate_number: c.certificate_number ?? '', issuing_body: c.issuing_body ?? '',
+      status: (c.status === 'expired' ? 'active' : c.status) as 'active' | 'pending' | 'revoked',
+      document_url: c.document_url ?? '', notes: c.notes ?? '',
+    })
+  }
+  function openRenewal(c: StaffCertification) {
+    const def = certDefs.find(d => d.id === c.certification_id)
+    setCertDraft({ certification_id: c.certification_id, issue_date: '', expiry_date: '', certificate_number: '', issuing_body: c.issuing_body || def?.issuing_body || '', status: 'active', document_url: '', notes: '' })
+  }
+  // Selecting a cert auto-fills issuing body (when blank); setting issue date
+  // auto-suggests expiry from the definition's validity period.
+  function pickCert(certId: string) {
+    const def = certDefs.find(d => d.id === certId)
+    setCertDraft(d => {
+      if (!d) return d
+      const next = { ...d, certification_id: certId, issuing_body: d.issuing_body || def?.issuing_body || '' }
+      if (next.issue_date && def?.validity_period_months != null) next.expiry_date = addMonthsStr(next.issue_date, def.validity_period_months)
+      return next
+    })
+  }
+  function setIssueDate(val: string) {
+    setCertDraft(d => {
+      if (!d) return d
+      const def = certDefs.find(x => x.id === d.certification_id)
+      const next = { ...d, issue_date: val }
+      if (val && def?.validity_period_months != null) next.expiry_date = addMonthsStr(val, def.validity_period_months)
+      return next
+    })
+  }
+  async function saveCert() {
+    if (!draft?.id || !certDraft) return
+    if (!certDraft.certification_id) { alert('Pick a certification'); return }
+    let status: StaffCertification['status'] = certDraft.status
+    if (certDraft.expiry_date && certDraft.expiry_date < todayStr()) status = 'expired'
+    const payload = {
+      staff_id: draft.id, certification_id: certDraft.certification_id,
+      issue_date: certDraft.issue_date || null, expiry_date: certDraft.expiry_date || null,
+      certificate_number: certDraft.certificate_number || '', issuing_body: certDraft.issuing_body || '',
+      document_url: certDraft.document_url || '', status, notes: certDraft.notes || '',
+      verified_by: currentStaffId ?? null, verified_at: currentStaffId ? new Date().toISOString() : null,
+    }
+    if (certDraft.id) await supabase.from('staff_certifications').update(payload).eq('id', certDraft.id)
+    else await supabase.from('staff_certifications').insert(payload)
+    setCertDraft(null)
+    load()
   }
 
   function roleNames(staffId: string): string {
@@ -209,6 +308,14 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
   if (loading) return <div className="text-sm text-[--muted] py-8">Loading staff…</div>
 
   const draftAssignments = draft?.id ? assignments.filter(a => a.staff_id === draft.id) : []
+  const draftCerts = draft?.id
+    ? allCerts.filter(c => c.staff_id === draft.id).slice().sort((a, b) => {
+        if (!a.expiry_date && !b.expiry_date) return 0
+        if (!a.expiry_date) return 1
+        if (!b.expiry_date) return -1
+        return a.expiry_date.localeCompare(b.expiry_date)
+      })
+    : []
 
   return (
     <div className="space-y-4">
@@ -225,7 +332,7 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name…"
             className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-44" />
           {!draft && (
-            <button onClick={() => { setError(''); setEditTab('profile'); setSkillDraft(null); setDraft(blankStaff()) }}
+            <button onClick={() => { setError(''); setEditTab('profile'); setSkillDraft(null); setCertDraft(null); setDraft(blankStaff()) }}
               className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] whitespace-nowrap">
               + Add Staff Member
             </button>
@@ -245,6 +352,7 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
                 <th className="text-left px-3 py-2">Employment Type</th>
                 <th className="text-left px-3 py-2">Status</th>
                 <th className="text-left px-3 py-2">Role(s)</th>
+                <th className="text-left px-3 py-2">Certs</th>
                 <th className="text-left px-3 py-2">Actions</th>
               </tr>
             </thead>
@@ -261,7 +369,15 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
                   </td>
                   <td className="px-3 py-2.5 text-[--muted]">{roleNames(s.id)}</td>
                   <td className="px-3 py-2.5">
-                    <button onClick={() => { setError(''); setAsnDraft(null); setSkillDraft(null); setEditTab('profile'); setDraft({ ...s }) }}
+                    {(() => { const dot = staffCertDot(s.id); return (
+                      <span className="inline-flex items-center gap-1.5 text-[--muted]" title={dot.label}>
+                        <span className="inline-block w-2 h-2 rounded-full" style={{ background: dot.color }} />
+                        {dot.label}
+                      </span>
+                    ) })()}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <button onClick={() => { setError(''); setAsnDraft(null); setSkillDraft(null); setCertDraft(null); setEditTab('profile'); setDraft({ ...s }) }}
                       className="px-2 py-0.5 text-[10px] border border-[--border-2] rounded text-[--muted] hover:text-[--text]">Edit</button>
                   </td>
                 </tr>
@@ -433,9 +549,97 @@ export default function StaffModule({ restaurantId, locationId, currentStaffId }
             </div>
           )}
 
-          {/* ── Certifications tab (Gap 7 Phase 2b) ── */}
+          {/* ── Certifications tab ── */}
           {draft.id && editTab === 'certifications' && (
-            <p className="text-xs text-[--muted]">Certifications management coming in a later phase.</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[--hint]">Certifications</h4>
+                {!certDraft && <button onClick={openAddCert} className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium">+ Add certification</button>}
+              </div>
+              {draftCerts.length === 0 ? (
+                <p className="text-xs text-[--muted]">No certifications recorded.</p>
+              ) : (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wide text-[--hint] border-b border-[--border]">
+                      <th className="text-left py-1.5">Certification</th><th className="text-left py-1.5">Category</th>
+                      <th className="text-left py-1.5">Issued</th><th className="text-left py-1.5">Expires</th>
+                      <th className="text-left py-1.5">Status</th><th className="text-left py-1.5">Cert #</th>
+                      <th className="text-left py-1.5">Document</th><th className="text-left py-1.5">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draftCerts.map(c => {
+                      const def = certDefs.find(d => d.id === c.certification_id)
+                      const st = certStatusOf(c)
+                      const label = st === 'expiring_soon' ? `Expires ${c.expiry_date}` : st.charAt(0).toUpperCase() + st.slice(1).replace('_', ' ')
+                      return (
+                        <tr key={c.id} className="border-b border-[--border] last:border-0">
+                          <td className="py-1.5 font-medium text-[--text]">{def?.name ?? '—'}</td>
+                          <td className="py-1.5 text-[--muted]">{def ? CERT_CAT_LABELS[def.category] : '—'}</td>
+                          <td className="py-1.5 text-[--muted]">{c.issue_date ?? '—'}</td>
+                          <td className="py-1.5 text-[--muted]">{c.expiry_date ?? '—'}</td>
+                          <td className="py-1.5"><span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${CERT_BADGE[st]}`}>{label}</span></td>
+                          <td className="py-1.5 text-[--muted]">{c.certificate_number || '—'}</td>
+                          <td className="py-1.5">{c.document_url ? <a href={c.document_url} target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">📎 View</a> : <span className="text-[--hint]">—</span>}</td>
+                          <td className="py-1.5">
+                            <div className="flex gap-1">
+                              <button onClick={() => openEditCert(c)} className="px-2 py-0.5 text-[10px] border border-[--border-2] rounded text-[--muted] hover:text-[--text]">Edit</button>
+                              {st === 'expired' && <button onClick={() => openRenewal(c)} className="px-2 py-0.5 text-[10px] border border-[--accent] text-[--accent] rounded hover:bg-[--accent-light]">+ Renewal</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {certDraft && (
+                <div className="bg-[--surface-2] rounded-lg p-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Labeled label="Certification">
+                      {certDraft.id ? (
+                        <div className="fi w-full bg-white text-[--muted]">{certDefs.find(d => d.id === certDraft.certification_id)?.name ?? '—'}</div>
+                      ) : (
+                        <select value={certDraft.certification_id} onChange={e => pickCert(e.target.value)} className="fi w-full bg-white">
+                          <option value="">— select —</option>
+                          {certDefs.filter(d => !allCerts.some(c => c.staff_id === draft.id && c.certification_id === d.id && (c.status === 'active' || c.status === 'pending')))
+                            .map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                      )}
+                    </Labeled>
+                    <Labeled label="Status">
+                      <select value={certDraft.status} onChange={e => setCertDraft(d => ({ ...d!, status: e.target.value as 'active' | 'pending' | 'revoked' }))} className="fi w-full bg-white capitalize">
+                        <option value="active">Active</option><option value="pending">Pending</option><option value="revoked">Revoked</option>
+                      </select>
+                    </Labeled>
+                    <Labeled label="Issue date">
+                      <input type="date" value={certDraft.issue_date} onChange={e => setIssueDate(e.target.value)} className="fi w-full" />
+                    </Labeled>
+                    <Labeled label="Expiry date">
+                      <input type="date" value={certDraft.expiry_date} onChange={e => setCertDraft(d => ({ ...d!, expiry_date: e.target.value }))} className="fi w-full" />
+                    </Labeled>
+                    <Labeled label="Certificate #">
+                      <input value={certDraft.certificate_number} onChange={e => setCertDraft(d => ({ ...d!, certificate_number: e.target.value }))} className="fi w-full" />
+                    </Labeled>
+                    <Labeled label="Issuing body">
+                      <input value={certDraft.issuing_body} onChange={e => setCertDraft(d => ({ ...d!, issuing_body: e.target.value }))} className="fi w-full" />
+                    </Labeled>
+                    <Labeled label="Document URL" cls="col-span-2">
+                      <input value={certDraft.document_url} onChange={e => setCertDraft(d => ({ ...d!, document_url: e.target.value }))} placeholder="https://… (scan or upload link)" className="fi w-full" />
+                    </Labeled>
+                    <Labeled label="Notes" cls="col-span-2">
+                      <input value={certDraft.notes} onChange={e => setCertDraft(d => ({ ...d!, notes: e.target.value }))} className="fi w-full" />
+                    </Labeled>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveCert} className="px-3 py-1 text-[11px] font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark]">Save</button>
+                    <button onClick={() => setCertDraft(null)} className="px-3 py-1 text-[11px] border border-[--border-2] text-[--muted] rounded-lg hover:bg-white">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {(!draft.id || editTab === 'profile' || editTab === 'access') && (
