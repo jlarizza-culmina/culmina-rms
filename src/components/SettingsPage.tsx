@@ -11,6 +11,8 @@ import DaypartSettings from './DaypartSettings'
 import OperatingHoursSettings from './OperatingHoursSettings'
 import LocationCalendarSettings from './LocationCalendarSettings'
 import CoverForecastSettings from './CoverForecastSettings'
+import SkillsLibrarySettings from './SkillsLibrarySettings'
+import CertificationsLibrarySettings from './CertificationsLibrarySettings'
 import StaffModule from './StaffModule'
 
 interface Props {
@@ -21,7 +23,7 @@ interface Props {
   onLocationsUpdate: (l: Location[]) => void
 }
 
-type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts' | 'operating_hours' | 'calendar' | 'cover_forecast'
+type SettingsTab = 'general' | 'locations' | 'picklists' | 'branding' | 'entitlements' | 'team' | 'queue' | 'library_import' | 'nutrition' | 'map_ingredients' | 'haccp_equipment' | 'staff_members' | 'dayparts' | 'operating_hours' | 'calendar' | 'cover_forecast' | 'skills_library' | 'certs_library'
 
 const PICKLIST_NAMES = [
   { value: 'ingredient_unit',     label: 'Ingredient Units' },
@@ -241,6 +243,8 @@ export default function SettingsPage({ ctx, userId, currentStaffId, onRestaurant
     { key: 'locations',    label: 'Locations' },
     { key: 'branding',     label: 'Branding' },
     { key: 'staff_members', label: '👥 Staff' },
+    { key: 'skills_library', label: '⭐ Skills' },
+    { key: 'certs_library', label: '📜 Certifications' },
     { key: 'dayparts',     label: '⏱ Dayparts' },
     { key: 'operating_hours', label: '🕐 Hours' },
     { key: 'calendar',     label: '📅 Calendar' },
@@ -702,6 +706,16 @@ export default function SettingsPage({ ctx, userId, currentStaffId, onRestaurant
             locationId={ctx.locations?.[0]?.id}
             locationName={ctx.locations?.[0]?.name}
           />
+        )}
+
+        {/* ── Skills Library tab ── */}
+        {tab === 'skills_library' && (
+          <SkillsLibrarySettings restaurantId={ctx.restaurant.id} />
+        )}
+
+        {/* ── Certifications Library tab ── */}
+        {tab === 'certs_library' && (
+          <CertificationsLibrarySettings restaurantId={ctx.restaurant.id} />
         )}
 
         {/* ── Cover Forecast tab ── */}
