@@ -12,7 +12,7 @@ interface Props {
   locationName?: string
 }
 
-type HACCPTab = 'log' | 'corrective' | 'receiving' | 'cooking'
+type HACCPTab = 'log' | 'corrective' | 'receiving' | 'cooking' | 'plan'
 type LogSlot  = 'opening' | 'closing'
 type StatusFilter = 'all' | 'open' | 'resolved'
 type DeliveryType = 'standard' | 'contract_kitchen'
@@ -251,6 +251,132 @@ function printCookingLog(logs: CookingLog[], locationName: string, dateFrom: str
   if (w) { w.document.write(html); w.document.close(); w.print() }
 }
 
+// ── HACCP plan types + seed data ──────────────────────────────
+// ASSUMED SCHEMA (CCP columns confirmed by the seed spec; plan-section columns
+// inferred — adjust if the real haccp_plans table differs):
+//   haccp_plans: id, location_id, title, effective_date, version, status,
+//     generated_by, reviewed_by, reviewed_at, facility_description,
+//     menu_hazard_analysis, monitoring_overview, corrective_action_procedures,
+//     verification_procedures, record_keeping, created_at
+//   haccp_plan_ccps: id, plan_id, sort_order, step_name, hazard, critical_limits,
+//     monitoring_procedure, corrective_actions, verification, records_kept
+interface HaccpPlan {
+  id: string
+  location_id: string
+  title: string
+  effective_date: string | null
+  version: number
+  status: 'draft' | 'active' | 'archived'
+  generated_by: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  facility_description: string
+  menu_hazard_analysis: string
+  monitoring_overview: string
+  corrective_action_procedures: string
+  verification_procedures: string
+  record_keeping: string
+  created_at: string
+}
+interface HaccpCCP {
+  id?: string
+  plan_id?: string
+  sort_order: number
+  step_name: string
+  hazard: string
+  critical_limits: string
+  monitoring_procedure: string
+  corrective_actions: string
+  verification: string
+  records_kept: string
+}
+
+const CCP_SEED: HaccpCCP[] = [
+  { sort_order: 1, step_name: 'Cold Storage', hazard: 'Bacterial growth in refrigerated storage', critical_limits: 'All refrigerated items maintained at ≤41°F (5°C)', monitoring_procedure: 'Manual temperature check of all refrigeration units twice daily (opening and closing)', corrective_actions: 'Adjust unit, relocate product to compliant unit, discard if held above 41°F for more than 2 hours', verification: 'Review temperature logs weekly. Calibrate thermometers monthly.', records_kept: 'Temperature logs (Culmina) — retained 90 days' },
+  { sort_order: 2, step_name: 'Receiving — General Deliveries', hazard: 'Receiving food at unsafe temperature', critical_limits: 'Cold food ≤41°F upon arrival. Frozen food: solid, no visible thaw.', monitoring_procedure: 'Check temperature of each cold delivery with calibrated thermometer before acceptance', corrective_actions: 'Reject delivery if temperature exceeds limit. Document rejection in receiving log.', verification: 'Review receiving logs weekly.', records_kept: 'HACCP receiving log (Culmina) — 90 days' },
+  { sort_order: 3, step_name: 'Receiving — Contract Kitchen / Sous Vide', hazard: 'Receiving pre-cooked product at unsafe temp or with missing batch documentation', critical_limits: '≤41°F on arrival. Batch ID present on label.', monitoring_procedure: 'Verify temperature and batch ID for each contract kitchen delivery before acceptance', corrective_actions: 'Reject if temperature non-compliant or batch ID missing. Log rejection.', verification: 'Cross-reference batch IDs with contract kitchen production records monthly.', records_kept: 'HACCP receiving log with batch IDs — 90 days' },
+  { sort_order: 4, step_name: 'Hot Holding During Service', hazard: 'Bacterial growth in food held for service', critical_limits: 'All hot-held items maintained at ≥140°F (60°C)', monitoring_procedure: 'Temperature check every 2 hours during service', corrective_actions: 'Reheat to 165°F within 2 hours or discard if held below 140°F', verification: 'Review cooking/hot hold logs weekly.', records_kept: 'HACCP cooking log (Culmina) — 90 days' },
+  { sort_order: 5, step_name: 'Cooling of Cooked Items', hazard: 'Pathogen growth during improper cooling', critical_limits: 'Cool from 140°F to 70°F within 2 hours, then from 70°F to 41°F within 4 additional hours', monitoring_procedure: 'Check temperature at 2-hour and 6-hour marks after removing from heat', corrective_actions: 'Discard if cooling rate not achieved. Log discard with reason.', verification: 'Review corrective action logs weekly.', records_kept: 'Temperature logs and corrective actions — 90 days' },
+  { sort_order: 6, step_name: 'Prepared Batch Shelf Life Management', hazard: 'Pathogen growth in prepared items held beyond safe shelf life', critical_limits: 'All prepared items consumed or discarded before USE BY date/time on HACCP label', monitoring_procedure: 'Daily review of prepared batch inventory in Culmina. Visual check each shift.', corrective_actions: 'Immediately discard any item past USE BY. Log discard: item, qty, date, who discarded.', verification: 'Batch discard log reviewed weekly by chef.', records_kept: 'Prepared batch log (Culmina) — 90 days. Corrective action log — 1 year.' },
+]
+
+const PLAN_MONITORING_OVERVIEW = 'All monitoring is performed by the manager on duty or designated trained staff. Records are maintained in Culmina restaurant management software and available on demand.'
+const PLAN_CORRECTIVE_PROCEDURES = 'When a critical limit is not met, the manager on duty takes immediate corrective action, removes the affected product from service if necessary, and documents the action in the Culmina corrective action log.'
+const PLAN_VERIFICATION_PROCEDURES = 'The manager reviews all HACCP logs weekly. Thermometers are calibrated monthly. The HACCP plan is reviewed annually or when the menu changes significantly.'
+const PLAN_RECORD_KEEPING = 'The following records are maintained in Culmina and available for inspection: temperature logs (90 days), receiving logs (90 days), cooking logs (90 days), corrective action logs (1 year), prepared batch logs (90 days).'
+const PLAN_MENU_HAZARD = 'Menu consists of crostini, pasta (reheated), charcuterie, cheese, and bar program. Pre-cooked proteins are received from a licensed contract kitchen. Key biological hazards include temperature abuse during cold storage, receiving, hot holding, and cooling. No raw protein cooking on premises.'
+function planFacilityText(restaurant: string, address: string): string {
+  return `${restaurant} is an Italian caffetteria and aperitivo bar located at ${address || '[address]'}. The operation does not include on-site cooking of raw proteins (no Type I hood). Primary food handling includes: cold prep, reheating of pre-cooked items, hot holding during service, and prepared batch production.`
+}
+
+type PlanSectionKey = 'facility_description' | 'menu_hazard_analysis' | 'monitoring_overview' | 'corrective_action_procedures' | 'verification_procedures' | 'record_keeping'
+const PLAN_SECTIONS: { key: PlanSectionKey; label: string }[] = [
+  { key: 'facility_description',          label: 'Facility description' },
+  { key: 'menu_hazard_analysis',         label: 'Menu & hazard analysis' },
+  { key: 'monitoring_overview',          label: 'Monitoring procedures overview' },
+  { key: 'corrective_action_procedures', label: 'Corrective action procedures' },
+  { key: 'verification_procedures',      label: 'Verification procedures' },
+  { key: 'record_keeping',               label: 'Record keeping' },
+]
+type CcpFieldKey = 'step_name' | 'hazard' | 'critical_limits' | 'monitoring_procedure' | 'corrective_actions' | 'verification' | 'records_kept'
+const CCP_FIELDS: { key: CcpFieldKey; label: string }[] = [
+  { key: 'hazard',               label: 'Hazard' },
+  { key: 'critical_limits',      label: 'Critical limits' },
+  { key: 'monitoring_procedure', label: 'Monitoring procedure' },
+  { key: 'corrective_actions',   label: 'Corrective actions' },
+  { key: 'verification',         label: 'Verification' },
+  { key: 'records_kept',         label: 'Records kept' },
+]
+
+function printHACCPPlan(plan: HaccpPlan, ccps: HaccpCCP[], locationName: string, restaurantName: string) {
+  const d = (s: string | null) => s ? new Date(s + (s.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'
+  const esc = (s: string) => (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const ccpBlocks = ccps.map((c, i) => `
+    <div class="ccp">
+      <h4>CCP ${i + 1}: ${esc(c.step_name)}</h4>
+      <table class="ccp-t"><tbody>
+        <tr><th>Hazard</th><td>${esc(c.hazard)}</td></tr>
+        <tr><th>Critical limits</th><td>${esc(c.critical_limits)}</td></tr>
+        <tr><th>Monitoring procedure</th><td>${esc(c.monitoring_procedure)}</td></tr>
+        <tr><th>Corrective actions</th><td>${esc(c.corrective_actions)}</td></tr>
+        <tr><th>Verification</th><td>${esc(c.verification)}</td></tr>
+        <tr><th>Records kept</th><td>${esc(c.records_kept)}</td></tr>
+      </tbody></table>
+    </div>`).join('')
+  const html = `<!DOCTYPE html><html><head><title>HACCP Plan</title>
+    <style>
+      @page { size: letter; margin: 0.75in; }
+      body { font-family: Georgia, serif; font-size: 11px; color: #1a1a1a; line-height: 1.5; }
+      h1 { font-size: 18px; margin: 0 0 2px; } h2 { font-size: 14px; margin: 20px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+      h4 { font-size: 12px; margin: 12px 0 4px; } .meta { font-size: 10px; color: #555; }
+      .sig { margin-top: 14px; font-size: 11px; } .sig div { margin-bottom: 8px; }
+      table.ccp-t { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+      .ccp-t th { text-align: left; width: 150px; vertical-align: top; padding: 3px 8px; background: #f0ede8; border: 1px solid #ddd; font-size: 10px; }
+      .ccp-t td { padding: 3px 8px; border: 1px solid #ddd; }
+      .ccp { page-break-inside: avoid; }
+      p { white-space: pre-wrap; }
+    </style></head><body>
+    <h1>${esc(restaurantName)} — HACCP Plan</h1>
+    <div class="meta">Location: ${esc(locationName)}</div>
+    <div class="meta">Effective date: ${d(plan.effective_date)} · Version: ${plan.version}</div>
+    <div class="meta">Prepared by: ${esc(plan.generated_by) || '—'}</div>
+    <div class="meta">Reviewed by: ${esc(plan.reviewed_by ?? '') || '—'}${plan.reviewed_at ? ` on ${d(plan.reviewed_at)}` : ''}</div>
+    <div class="sig">
+      <div>Manager signature: ________________________  Date: __________</div>
+      <div>Owner signature:&nbsp;&nbsp;&nbsp;________________________  Date: __________</div>
+    </div>
+    <h2>Section 1: Facility Description</h2><p>${esc(plan.facility_description)}</p>
+    <h2>Section 2: Menu and Hazard Analysis</h2><p>${esc(plan.menu_hazard_analysis)}</p>
+    <h2>Section 3: Critical Control Points</h2>${ccpBlocks}
+    <h2>Section 4: Monitoring Procedures</h2><p>${esc(plan.monitoring_overview)}</p>
+    <h2>Section 5: Corrective Action Procedures</h2><p>${esc(plan.corrective_action_procedures)}</p>
+    <h2>Section 6: Verification Procedures</h2><p>${esc(plan.verification_procedures)}</p>
+    <h2>Section 7: Record Keeping</h2><p>${esc(plan.record_keeping)}</p>
+    </body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
+}
+
 export default function HACCPModule({ restaurantId, locationId, locationName }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<HACCPTab>('log')
@@ -291,6 +417,16 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
   const [cookMsg,     setCookMsg]     = useState('')
   const [cookPrintFrom, setCookPrintFrom] = useState(() => todayStr())
   const [cookPrintTo,   setCookPrintTo]   = useState(() => todayStr())
+
+  // ── HACCP plan state ──────────────────────────────────────────
+  const [plans,        setPlans]        = useState<HaccpPlan[]>([])
+  const [planView,     setPlanView]     = useState<'list' | 'generate' | 'edit'>('list')
+  const [planDraft,    setPlanDraft]    = useState<HaccpPlan | null>(null)
+  const [ccpDraft,     setCcpDraft]     = useState<HaccpCCP[]>([])
+  const [expandedCcp,  setExpandedCcp]  = useState<number | null>(null)
+  const [showPlanHistory, setShowPlanHistory] = useState(false)
+  const [restaurantName, setRestaurantName] = useState('')
+  const [locAddress,   setLocAddress]   = useState('')
 
   const loadEquipment = useCallback(async () => {
     if (!locationId) { setLoading(false); return }
@@ -353,7 +489,139 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
     setRecipes((data ?? []) as { id: string; name: string }[])
   }, [restaurantId, supabase])
 
-  useEffect(() => { loadEquipment(); loadRecentLogs(); loadActions(); loadReceiving(); loadTemplate(); loadCooking(); loadRecipes() }, [loadEquipment, loadRecentLogs, loadActions, loadReceiving, loadTemplate, loadCooking, loadRecipes])
+  const loadPlans = useCallback(async () => {
+    if (!locationId) return
+    const { data } = await supabase.from('haccp_plans').select('*').eq('location_id', locationId).order('created_at', { ascending: false })
+    setPlans((data ?? []) as HaccpPlan[])
+  }, [locationId, supabase])
+
+  const loadPlanContext = useCallback(async () => {
+    if (!locationId) return
+    const { data } = await supabase.from('locations').select('address, restaurants(name)').eq('id', locationId).maybeSingle()
+    setLocAddress((data as { address?: string } | null)?.address ?? '')
+    setRestaurantName(((data as { restaurants?: { name?: string } } | null)?.restaurants?.name) ?? (locationName ?? ''))
+  }, [locationId, locationName, supabase])
+
+  useEffect(() => { loadEquipment(); loadRecentLogs(); loadActions(); loadReceiving(); loadTemplate(); loadCooking(); loadRecipes(); loadPlans(); loadPlanContext() }, [loadEquipment, loadRecentLogs, loadActions, loadReceiving, loadTemplate, loadCooking, loadRecipes, loadPlans, loadPlanContext])
+
+  async function fetchCcps(planId: string): Promise<HaccpCCP[]> {
+    const { data } = await supabase.from('haccp_plan_ccps').select('*').eq('plan_id', planId).order('sort_order')
+    return (data ?? []) as HaccpCCP[]
+  }
+
+  function emptyPlanDraft(version: number): HaccpPlan {
+    return {
+      id: '', location_id: locationId ?? '', title: `${locationName ?? restaurantName} HACCP Plan ${new Date().getFullYear()}`,
+      effective_date: todayStr(), version, status: 'draft', generated_by: '', reviewed_by: null, reviewed_at: null,
+      facility_description: '', menu_hazard_analysis: '', monitoring_overview: '', corrective_action_procedures: '',
+      verification_procedures: '', record_keeping: '', created_at: '',
+    }
+  }
+
+  function openGenerate() {
+    const nextVersion = plans.length ? Math.max(...plans.map(p => p.version)) + 1 : 1
+    setPlanDraft(emptyPlanDraft(nextVersion))
+    setCcpDraft([])
+    setExpandedCcp(null)
+    setPlanView('generate')
+  }
+
+  function autoGenerate() {
+    setPlanDraft(d => d ? {
+      ...d,
+      facility_description: planFacilityText(restaurantName, locAddress),
+      menu_hazard_analysis: PLAN_MENU_HAZARD,
+      monitoring_overview: PLAN_MONITORING_OVERVIEW,
+      corrective_action_procedures: PLAN_CORRECTIVE_PROCEDURES,
+      verification_procedures: PLAN_VERIFICATION_PROCEDURES,
+      record_keeping: PLAN_RECORD_KEEPING,
+    } : d)
+    setCcpDraft(CCP_SEED.map(c => ({ ...c })))
+  }
+
+  async function savePlan() {
+    if (!planDraft || !locationId) return
+    if (!planDraft.title.trim()) { alert('Title is required'); return }
+    setSaving(true)
+    const { data: planRow, error } = await supabase.from('haccp_plans').insert({
+      location_id: locationId, title: planDraft.title.trim(), effective_date: planDraft.effective_date,
+      version: planDraft.version, status: 'draft', generated_by: planDraft.generated_by || '',
+      facility_description: planDraft.facility_description, menu_hazard_analysis: planDraft.menu_hazard_analysis,
+      monitoring_overview: planDraft.monitoring_overview, corrective_action_procedures: planDraft.corrective_action_procedures,
+      verification_procedures: planDraft.verification_procedures, record_keeping: planDraft.record_keeping,
+    }).select().single()
+    if (error || !planRow) { setSaving(false); console.error('[haccp plan]', error); alert('Failed to save plan'); return }
+    const planId = (planRow as { id: string }).id
+    if (ccpDraft.length) {
+      await supabase.from('haccp_plan_ccps').insert(ccpDraft.map(c => ({
+        plan_id: planId, sort_order: c.sort_order, step_name: c.step_name, hazard: c.hazard,
+        critical_limits: c.critical_limits, monitoring_procedure: c.monitoring_procedure,
+        corrective_actions: c.corrective_actions, verification: c.verification, records_kept: c.records_kept,
+      })))
+    }
+    setSaving(false)
+    await loadPlans()
+    const ccps = await fetchCcps(planId)
+    setPlanDraft(planRow as HaccpPlan)
+    setCcpDraft(ccps)
+    setPlanView('edit')
+    alert('Plan created.')
+  }
+
+  async function openEditPlan(plan: HaccpPlan) {
+    setPlanDraft({ ...plan })
+    setCcpDraft(await fetchCcps(plan.id))
+    setExpandedCcp(null)
+    setPlanView('edit')
+  }
+
+  function setCcpField(i: number, field: CcpFieldKey, value: string) {
+    setCcpDraft(prev => prev.map((c, idx) => idx === i ? { ...c, [field]: value } : c))
+  }
+
+  async function saveEditPlan() {
+    if (!planDraft?.id) return
+    setSaving(true)
+    await supabase.from('haccp_plans').update({
+      title: planDraft.title.trim(), effective_date: planDraft.effective_date, generated_by: planDraft.generated_by || '',
+      facility_description: planDraft.facility_description, menu_hazard_analysis: planDraft.menu_hazard_analysis,
+      monitoring_overview: planDraft.monitoring_overview, corrective_action_procedures: planDraft.corrective_action_procedures,
+      verification_procedures: planDraft.verification_procedures, record_keeping: planDraft.record_keeping,
+    }).eq('id', planDraft.id)
+    for (const c of ccpDraft) {
+      if (c.id) {
+        await supabase.from('haccp_plan_ccps').update({
+          step_name: c.step_name, hazard: c.hazard, critical_limits: c.critical_limits,
+          monitoring_procedure: c.monitoring_procedure, corrective_actions: c.corrective_actions,
+          verification: c.verification, records_kept: c.records_kept,
+        }).eq('id', c.id)
+      } else {
+        await supabase.from('haccp_plan_ccps').insert({ ...c, plan_id: planDraft.id })
+      }
+    }
+    setSaving(false)
+    setPlanView('list')
+    loadPlans()
+  }
+
+  async function markReviewed(plan: HaccpPlan) {
+    const name = prompt('Enter reviewing manager name:')
+    if (name === null || !name.trim()) return
+    await supabase.from('haccp_plans').update({ reviewed_by: name.trim(), reviewed_at: new Date().toISOString(), status: 'active' }).eq('id', plan.id)
+    alert('Plan marked as reviewed and activated.')
+    loadPlans()
+  }
+
+  async function archivePlan(plan: HaccpPlan) {
+    if (!confirm(`Archive "${plan.title}"?`)) return
+    await supabase.from('haccp_plans').update({ status: 'archived' }).eq('id', plan.id)
+    loadPlans()
+  }
+
+  async function exportPlanPdf(plan: HaccpPlan) {
+    const ccps = await fetchCcps(plan.id)
+    printHACCPPlan(plan, ccps, locationName ?? '', restaurantName)
+  }
 
   // ── Cooking handlers ──────────────────────────────────────────
   function openCookForm() {
@@ -716,7 +984,7 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
       <div className="bg-white border-b border-[--border] px-6 py-4 flex-shrink-0">
         <h1 className="font-serif text-xl font-medium text-[--text] mb-3">Compliance — HACCP</h1>
         <div className="flex bg-[--surface-2] rounded-lg p-0.5 gap-0.5 w-fit">
-          {([['log','📋 Log Temps'],['corrective','⚠ Corrective Actions'],['receiving','🚚 Receiving'],['cooking','🍳 Cooking/Reheating']] as [HACCPTab,string][]).map(([t, label]) => (
+          {([['log','📋 Log Temps'],['corrective','⚠ Corrective Actions'],['receiving','🚚 Receiving'],['cooking','🍳 Cooking/Reheating'],['plan','📄 HACCP Plan']] as [HACCPTab,string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${tab === t ? 'bg-white text-[--text] shadow-sm' : 'text-[--muted]'}`}>
               {label}
@@ -1230,6 +1498,128 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── HACCP PLAN TAB ── */}
+      {tab === 'plan' && (
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {!locationId ? (
+            <p className="text-sm text-[--muted]">No location selected.</p>
+          ) : planView === 'list' ? (
+            (() => {
+              const current = plans.find(p => p.status === 'active') ?? plans.find(p => p.status === 'draft') ?? null
+              const archived = plans.filter(p => p.status === 'archived')
+              const fmtD = (s: string | null) => s ? new Date(s + (s.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+              return (
+                <>
+                  {!current ? (
+                    <div className="bg-white rounded-xl border border-[--border] p-6 text-center space-y-3">
+                      <p className="text-sm text-[--muted]">No HACCP plan on file.</p>
+                      <button onClick={openGenerate} className="px-3 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark]">+ Generate HACCP Plan</button>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl border border-[--border] p-4 space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h3 className="font-serif text-sm font-medium text-[--text]">{current.title} · Version {current.version} · Effective {fmtD(current.effective_date)}</h3>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${current.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{current.status === 'active' ? 'Active' : 'Draft'}</span>
+                      </div>
+                      <div className="text-[11px] text-[--muted]">
+                        {current.reviewed_by ? `Reviewed by ${current.reviewed_by} on ${fmtD(current.reviewed_at)}` : <span className="text-amber-700">Not yet reviewed</span>}
+                      </div>
+                      <div className="flex gap-2 flex-wrap pt-1">
+                        <button onClick={() => openEditPlan(current)} className="px-2.5 py-1 text-[11px] border border-[--border-2] rounded-lg text-[--muted] hover:text-[--text]">Edit plan</button>
+                        <button onClick={() => markReviewed(current)} className="px-2.5 py-1 text-[11px] border border-[--border-2] rounded-lg text-[--muted] hover:text-[--text]">Mark as reviewed</button>
+                        <button onClick={() => archivePlan(current)} className="px-2.5 py-1 text-[11px] border border-[--border-2] rounded-lg text-[--muted] hover:text-[--text]">Archive</button>
+                        <button onClick={() => exportPlanPdf(current)} className="px-2.5 py-1 text-[11px] border border-[--border-2] rounded-lg text-[--muted] hover:text-[--text]">Export PDF</button>
+                      </div>
+                      <button onClick={openGenerate} className="text-[11px] text-[--accent] hover:text-[--accent-dark] font-medium pt-1">+ Generate new version</button>
+                    </div>
+                  )}
+
+                  {archived.length > 0 && (
+                    <div>
+                      <button onClick={() => setShowPlanHistory(v => !v)} className="text-[11px] text-[--muted] hover:text-[--text] underline">Previous versions {showPlanHistory ? '▲' : '▼'}</button>
+                      {showPlanHistory && (
+                        <div className="mt-2 space-y-2">
+                          {archived.map(p => (
+                            <div key={p.id} className="rounded-xl border border-[--border] bg-[--surface-2]/40 px-4 py-2 flex items-center justify-between text-[11px] text-[--muted]">
+                              <span>{p.title} · v{p.version} · Effective {fmtD(p.effective_date)}</span>
+                              <button onClick={() => exportPlanPdf(p)} className="px-2 py-0.5 text-[10px] border border-[--border-2] rounded text-[--muted] hover:text-[--text]">Export PDF</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )
+            })()
+          ) : planDraft ? (
+            // ── Generate / Edit form ──
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl border border-[--border] p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-serif text-sm font-medium text-[--text]">{planView === 'generate' ? 'Generate HACCP Plan' : `Edit: ${planDraft.title}`}</h3>
+                  {planView === 'generate' && (
+                    <button onClick={autoGenerate} className="px-3 py-1.5 text-xs font-medium border border-[--accent] text-[--accent] rounded-lg hover:bg-[--accent-light]">Generate plan from location data</button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><label className="block text-[11px] font-medium text-[--muted] mb-1">Title</label>
+                    <input value={planDraft.title} onChange={e => setPlanDraft(d => ({ ...d!, title: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-full" /></div>
+                  <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Effective date</label>
+                    <input type="date" value={planDraft.effective_date ?? ''} onChange={e => setPlanDraft(d => ({ ...d!, effective_date: e.target.value || null }))} className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-full" /></div>
+                  <div><label className="block text-[11px] font-medium text-[--muted] mb-1">Prepared by</label>
+                    <input value={planDraft.generated_by} onChange={e => setPlanDraft(d => ({ ...d!, generated_by: e.target.value }))} className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-full" /></div>
+                </div>
+                {PLAN_SECTIONS.map(s => (
+                  <div key={s.key}>
+                    <label className="block text-[11px] font-medium text-[--muted] mb-1">{s.label}</label>
+                    <textarea rows={3} value={planDraft[s.key]} onChange={e => setPlanDraft(d => ({ ...d!, [s.key]: e.target.value }))}
+                      className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-full resize-none" />
+                  </div>
+                ))}
+              </div>
+
+              {/* CCP accordion */}
+              <div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[--hint] mb-2">Critical Control Points ({ccpDraft.length})</h4>
+                {ccpDraft.length === 0 ? (
+                  <p className="text-xs text-[--muted]">{planView === 'generate' ? 'Click "Generate plan from location data" to pre-seed the 6 standard CCPs.' : 'No CCPs.'}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {ccpDraft.map((c, i) => (
+                      <div key={c.id ?? i} className="bg-white rounded-xl border border-[--border] overflow-hidden">
+                        <button onClick={() => setExpandedCcp(expandedCcp === i ? null : i)} className="w-full flex items-center justify-between px-3 py-2 text-left">
+                          <span className="text-xs font-medium text-[--text]">CCP {i + 1}: {c.step_name}</span>
+                          <span className="text-[--hint] text-[10px]">{expandedCcp === i ? '▲' : '▼'}</span>
+                        </button>
+                        {expandedCcp === i && (
+                          <div className="px-3 pb-3 space-y-2 border-t border-[--border]">
+                            <div className="pt-2"><label className="block text-[10px] text-[--muted] mb-1">Step name</label>
+                              <input value={c.step_name} onChange={e => setCcpField(i, 'step_name', e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full" /></div>
+                            {CCP_FIELDS.map(f => (
+                              <div key={f.key}><label className="block text-[10px] text-[--muted] mb-1">{f.label}</label>
+                                <textarea rows={2} value={c[f.key]} onChange={e => setCcpField(i, f.key, e.target.value)} className="text-xs border border-[--border-2] rounded-lg px-2 py-1 outline-none focus:border-[--accent] w-full resize-none" /></div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={planView === 'generate' ? savePlan : saveEditPlan} disabled={saving}
+                  className="px-4 py-1.5 text-xs font-medium bg-[--accent] text-white rounded-lg hover:bg-[--accent-dark] disabled:opacity-50">
+                  {saving ? 'Saving…' : planView === 'generate' ? 'Save plan' : 'Save changes'}
+                </button>
+                <button onClick={() => { setPlanView('list'); setPlanDraft(null) }} className="px-4 py-1.5 text-xs border border-[--border-2] text-[--muted] rounded-lg hover:bg-[--surface-2]">Cancel</button>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>
