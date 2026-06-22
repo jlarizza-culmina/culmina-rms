@@ -252,14 +252,24 @@ function printCookingLog(logs: CookingLog[], locationName: string, dateFrom: str
 }
 
 // ── HACCP plan types + seed data ──────────────────────────────
-// ASSUMED SCHEMA (CCP columns confirmed by the seed spec; plan-section columns
-// inferred — adjust if the real haccp_plans table differs):
+// CONFIRMED SCHEMA:
 //   haccp_plans: id, location_id, title, effective_date, version, status,
-//     generated_by, reviewed_by, reviewed_at, facility_description,
-//     menu_hazard_analysis, monitoring_overview, corrective_action_procedures,
-//     verification_procedures, record_keeping, created_at
+//     plan_data (jsonb — holds the section text), generated_by, reviewed_by,
+//     reviewed_at, created_at, updated_at
 //   haccp_plan_ccps: id, plan_id, sort_order, step_name, hazard, critical_limits,
 //     monitoring_procedure, corrective_actions, verification, records_kept
+interface PlanData {
+  facility_description: string
+  menu_hazard_analysis: string
+  monitoring_overview: string
+  corrective_action_procedures: string
+  verification_procedures: string
+  record_keeping: string
+}
+const EMPTY_PLAN_DATA: PlanData = {
+  facility_description: '', menu_hazard_analysis: '', monitoring_overview: '',
+  corrective_action_procedures: '', verification_procedures: '', record_keeping: '',
+}
 interface HaccpPlan {
   id: string
   location_id: string
@@ -267,15 +277,10 @@ interface HaccpPlan {
   effective_date: string | null
   version: number
   status: 'draft' | 'active' | 'archived'
+  plan_data: PlanData
   generated_by: string
   reviewed_by: string | null
   reviewed_at: string | null
-  facility_description: string
-  menu_hazard_analysis: string
-  monitoring_overview: string
-  corrective_action_procedures: string
-  verification_procedures: string
-  record_keeping: string
   created_at: string
 }
 interface HaccpCCP {
@@ -309,7 +314,7 @@ function planFacilityText(restaurant: string, address: string): string {
   return `${restaurant} is an Italian caffetteria and aperitivo bar located at ${address || '[address]'}. The operation does not include on-site cooking of raw proteins (no Type I hood). Primary food handling includes: cold prep, reheating of pre-cooked items, hot holding during service, and prepared batch production.`
 }
 
-type PlanSectionKey = 'facility_description' | 'menu_hazard_analysis' | 'monitoring_overview' | 'corrective_action_procedures' | 'verification_procedures' | 'record_keeping'
+type PlanSectionKey = keyof PlanData
 const PLAN_SECTIONS: { key: PlanSectionKey; label: string }[] = [
   { key: 'facility_description',          label: 'Facility description' },
   { key: 'menu_hazard_analysis',         label: 'Menu & hazard analysis' },
@@ -365,13 +370,13 @@ function printHACCPPlan(plan: HaccpPlan, ccps: HaccpCCP[], locationName: string,
       <div>Manager signature: ________________________  Date: __________</div>
       <div>Owner signature:&nbsp;&nbsp;&nbsp;________________________  Date: __________</div>
     </div>
-    <h2>Section 1: Facility Description</h2><p>${esc(plan.facility_description)}</p>
-    <h2>Section 2: Menu and Hazard Analysis</h2><p>${esc(plan.menu_hazard_analysis)}</p>
+    <h2>Section 1: Facility Description</h2><p>${esc(plan.plan_data.facility_description)}</p>
+    <h2>Section 2: Menu and Hazard Analysis</h2><p>${esc(plan.plan_data.menu_hazard_analysis)}</p>
     <h2>Section 3: Critical Control Points</h2>${ccpBlocks}
-    <h2>Section 4: Monitoring Procedures</h2><p>${esc(plan.monitoring_overview)}</p>
-    <h2>Section 5: Corrective Action Procedures</h2><p>${esc(plan.corrective_action_procedures)}</p>
-    <h2>Section 6: Verification Procedures</h2><p>${esc(plan.verification_procedures)}</p>
-    <h2>Section 7: Record Keeping</h2><p>${esc(plan.record_keeping)}</p>
+    <h2>Section 4: Monitoring Procedures</h2><p>${esc(plan.plan_data.monitoring_overview)}</p>
+    <h2>Section 5: Corrective Action Procedures</h2><p>${esc(plan.plan_data.corrective_action_procedures)}</p>
+    <h2>Section 6: Verification Procedures</h2><p>${esc(plan.plan_data.verification_procedures)}</p>
+    <h2>Section 7: Record Keeping</h2><p>${esc(plan.plan_data.record_keeping)}</p>
     </body></html>`
   const w = window.open('', '_blank')
   if (w) { w.document.write(html); w.document.close(); w.print() }
@@ -492,7 +497,7 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
   const loadPlans = useCallback(async () => {
     if (!locationId) return
     const { data } = await supabase.from('haccp_plans').select('*').eq('location_id', locationId).order('created_at', { ascending: false })
-    setPlans((data ?? []) as HaccpPlan[])
+    setPlans(((data ?? []) as HaccpPlan[]).map(p => ({ ...p, plan_data: { ...EMPTY_PLAN_DATA, ...(p.plan_data ?? {}) } })))
   }, [locationId, supabase])
 
   const loadPlanContext = useCallback(async () => {
@@ -513,8 +518,7 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
     return {
       id: '', location_id: locationId ?? '', title: `${locationName ?? restaurantName} HACCP Plan ${new Date().getFullYear()}`,
       effective_date: todayStr(), version, status: 'draft', generated_by: '', reviewed_by: null, reviewed_at: null,
-      facility_description: '', menu_hazard_analysis: '', monitoring_overview: '', corrective_action_procedures: '',
-      verification_procedures: '', record_keeping: '', created_at: '',
+      plan_data: { ...EMPTY_PLAN_DATA }, created_at: '',
     }
   }
 
@@ -529,12 +533,14 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
   function autoGenerate() {
     setPlanDraft(d => d ? {
       ...d,
-      facility_description: planFacilityText(restaurantName, locAddress),
-      menu_hazard_analysis: PLAN_MENU_HAZARD,
-      monitoring_overview: PLAN_MONITORING_OVERVIEW,
-      corrective_action_procedures: PLAN_CORRECTIVE_PROCEDURES,
-      verification_procedures: PLAN_VERIFICATION_PROCEDURES,
-      record_keeping: PLAN_RECORD_KEEPING,
+      plan_data: {
+        facility_description: planFacilityText(restaurantName, locAddress),
+        menu_hazard_analysis: PLAN_MENU_HAZARD,
+        monitoring_overview: PLAN_MONITORING_OVERVIEW,
+        corrective_action_procedures: PLAN_CORRECTIVE_PROCEDURES,
+        verification_procedures: PLAN_VERIFICATION_PROCEDURES,
+        record_keeping: PLAN_RECORD_KEEPING,
+      },
     } : d)
     setCcpDraft(CCP_SEED.map(c => ({ ...c })))
   }
@@ -546,9 +552,7 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
     const { data: planRow, error } = await supabase.from('haccp_plans').insert({
       location_id: locationId, title: planDraft.title.trim(), effective_date: planDraft.effective_date,
       version: planDraft.version, status: 'draft', generated_by: planDraft.generated_by || '',
-      facility_description: planDraft.facility_description, menu_hazard_analysis: planDraft.menu_hazard_analysis,
-      monitoring_overview: planDraft.monitoring_overview, corrective_action_procedures: planDraft.corrective_action_procedures,
-      verification_procedures: planDraft.verification_procedures, record_keeping: planDraft.record_keeping,
+      plan_data: planDraft.plan_data,
     }).select().single()
     if (error || !planRow) { setSaving(false); console.error('[haccp plan]', error); alert('Failed to save plan'); return }
     const planId = (planRow as { id: string }).id
@@ -584,9 +588,7 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
     setSaving(true)
     await supabase.from('haccp_plans').update({
       title: planDraft.title.trim(), effective_date: planDraft.effective_date, generated_by: planDraft.generated_by || '',
-      facility_description: planDraft.facility_description, menu_hazard_analysis: planDraft.menu_hazard_analysis,
-      monitoring_overview: planDraft.monitoring_overview, corrective_action_procedures: planDraft.corrective_action_procedures,
-      verification_procedures: planDraft.verification_procedures, record_keeping: planDraft.record_keeping,
+      plan_data: planDraft.plan_data,
     }).eq('id', planDraft.id)
     for (const c of ccpDraft) {
       if (c.id) {
@@ -1576,7 +1578,7 @@ export default function HACCPModule({ restaurantId, locationId, locationName }: 
                 {PLAN_SECTIONS.map(s => (
                   <div key={s.key}>
                     <label className="block text-[11px] font-medium text-[--muted] mb-1">{s.label}</label>
-                    <textarea rows={3} value={planDraft[s.key]} onChange={e => setPlanDraft(d => ({ ...d!, [s.key]: e.target.value }))}
+                    <textarea rows={3} value={planDraft.plan_data[s.key]} onChange={e => setPlanDraft(d => ({ ...d!, plan_data: { ...d!.plan_data, [s.key]: e.target.value } }))}
                       className="text-xs border border-[--border-2] rounded-lg px-2.5 py-1.5 outline-none focus:border-[--accent] w-full resize-none" />
                   </div>
                 ))}
